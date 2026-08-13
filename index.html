@@ -1,0 +1,2202 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0e0f12">
+<title>지휘멘트 훈련</title>
+<meta name="description" content="소방 현장지휘관 지휘멘트 반복 숙달 훈련 앱">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="지휘멘트 훈련">
+<style>
+/* ============================================================
+   디자인 토큰 — 다크 테마 / 소방 레드 / 야간·장갑 착용 고려
+   ============================================================ */
+:root{
+  --bg:#0e0f12;
+  --surface:#171a20;
+  --surface-2:#1f242c;
+  --line:#2b323c;
+  --red:#E23B3B;
+  --red-dim:#8f2020;
+  --amber:#F5842B;
+  --text:#EDEFF2;
+  --muted:#98A1AD;
+  --ok:#3FBF6A;
+  --nav-h:64px;
+  --tap:56px;          /* 최소 터치 영역 */
+  --sat:env(safe-area-inset-top,0px);
+  --sab:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR","Malgun Gothic",sans-serif;
+  font-size:16px;line-height:1.5;overscroll-behavior:none;
+}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+input,select,textarea{font:inherit;color:inherit}
+
+#app{max-width:560px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;position:relative}
+
+/* ---------- 상단 바 ---------- */
+.topbar{
+  position:sticky;top:0;z-index:20;background:rgba(14,15,18,.94);backdrop-filter:blur(8px);
+  padding:calc(var(--sat) + 10px) 16px 10px;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:10px;min-height:52px;
+}
+.topbar h1{font-size:17px;margin:0;font-weight:700;letter-spacing:-.3px}
+.topbar .spacer{flex:1}
+.badge{font-size:12px;padding:3px 8px;border-radius:999px;background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.badge.red{background:rgba(226,59,59,.15);color:#ff8f8f;border-color:var(--red-dim)}
+
+/* ---------- 뷰 ---------- */
+main{flex:1;padding:16px 16px calc(var(--nav-h) + var(--sab) + 24px)}
+.view{display:none;animation:fade .18s ease}
+.view.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* ---------- 공통 컴포넌트 ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
+.card + .card{margin-top:12px}
+.sect{margin:22px 0 10px;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.4px}
+.sect:first-child{margin-top:6px}
+.row{display:flex;align-items:center;gap:10px}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.xsmall{font-size:12px}
+
+.btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  min-height:var(--tap);padding:0 18px;border-radius:12px;
+  background:var(--surface-2);border:1px solid var(--line);font-weight:600;width:100%;
+}
+.btn:active{transform:scale(.985)}
+.btn.primary{background:var(--red);border-color:var(--red);color:#fff}
+.btn.ghost{background:transparent}
+.btn.danger{background:transparent;border-color:var(--red-dim);color:#ff8f8f}
+.btn.sm{min-height:44px;font-size:14px;padding:0 14px;width:auto}
+.btn[disabled]{opacity:.45;pointer-events:none}
+
+.big-start{
+  min-height:120px;border-radius:18px;background:linear-gradient(160deg,#E23B3B,#a82323);
+  color:#fff;font-size:22px;font-weight:800;letter-spacing:-.5px;flex-direction:column;gap:4px;
+  box-shadow:0 8px 30px rgba(226,59,59,.28);border:0;
+}
+.big-start small{font-weight:500;font-size:13px;opacity:.9}
+
+/* 통계 카드 */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 8px;text-align:center}
+.stat b{display:block;font-size:22px;font-weight:800;letter-spacing:-.5px}
+.stat span{font-size:11px;color:var(--muted)}
+
+/* 리스트 */
+.list-item{
+  display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-height:var(--tap);
+}
+.list-item + .list-item{margin-top:8px}
+.list-item .grow{flex:1;min-width:0}
+.list-item .t{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list-item .s{font-size:12px;color:var(--muted);margin-top:2px}
+.score-chip{font-weight:800;font-size:18px;min-width:46px;text-align:right}
+
+/* 선택 칩 */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{
+  padding:0 14px;min-height:48px;display:flex;align-items:center;border-radius:12px;
+  background:var(--surface);border:1px solid var(--line);font-size:15px;font-weight:600;
+}
+.chip.on{background:rgba(226,59,59,.16);border-color:var(--red);color:#ffb2b2}
+.chip.grow{flex:1;justify-content:center}
+
+/* 시나리오 선택 카드 */
+.sc-item{display:block;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.sc-item + .sc-item{margin-top:8px}
+.sc-item.on{border-color:var(--red);background:rgba(226,59,59,.1)}
+.sc-item .t{font-weight:700;font-size:15px}
+.sc-item .d{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.45}
+
+/* 폼 */
+label.f{display:block;font-size:13px;color:var(--muted);margin:0 0 6px}
+.inp,select.inp{
+  width:100%;min-height:var(--tap);background:var(--surface-2);border:1px solid var(--line);
+  border-radius:12px;padding:0 14px;outline:none;
+}
+.inp:focus{border-color:var(--red)}
+textarea.inp{padding:12px 14px;min-height:80px;resize:none;line-height:1.5}
+.switch{display:flex;align-items:center;justify-content:space-between;min-height:var(--tap);gap:12px}
+.switch .lbl{font-weight:600;font-size:15px}
+.toggle{width:56px;height:32px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);position:relative;flex:none}
+.toggle::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#6b7480;transition:.16s}
+.toggle.on{background:rgba(226,59,59,.3);border-color:var(--red)}
+.toggle.on::after{left:27px;background:var(--red)}
+.range{width:100%;accent-color:var(--red);height:44px}
+
+/* ---------- 훈련 진행 ---------- */
+.run-head{
+  position:sticky;top:0;z-index:15;margin:-16px -16px 12px;padding:10px 14px;
+  background:rgba(14,15,18,.95);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:10px;
+}
+.run-head .info{flex:1;min-width:0}
+.run-head .nm{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.run-head .mt{font-size:11px;color:var(--muted)}
+.clock{font-variant-numeric:tabular-nums;font-weight:800;font-size:19px;letter-spacing:-.5px}
+
+#log{display:flex;flex-direction:column;gap:10px;padding-bottom:8px}
+.msg{border-radius:12px;padding:11px 13px;font-size:15px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+.msg .who{display:block;font-size:11px;font-weight:700;letter-spacing:.5px;margin-bottom:4px;opacity:.85}
+.msg.dispatch{background:rgba(245,132,43,.08);border:1.5px solid var(--amber);color:#ffe3c9}
+.msg.dispatch .who{color:var(--amber)}
+.msg.me{background:var(--surface-2);border:1px solid var(--line);margin-left:28px}
+.msg.me .who{color:var(--muted)}
+.msg.sys{background:transparent;border:1px dashed var(--red-dim);color:#ff9a9a;font-size:13px;text-align:center;padding:8px}
+.msg.thinking{background:var(--surface);border:1px solid var(--line);color:var(--muted);font-size:14px}
+
+.waitbar{margin-top:4px}
+.waitbar .cap{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;justify-content:space-between}
+.track{height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden}
+.track > i{display:block;height:100%;background:var(--amber);width:0%;transition:width .2s linear}
+.track.urgent > i{background:var(--red)}
+
+/* PTT 영역 — 화면 하단 1/4 */
+.ptt-dock{
+  position:fixed;left:0;right:0;bottom:calc(var(--nav-h) + var(--sab));z-index:18;
+  max-width:560px;margin:0 auto;padding:10px 16px 12px;
+  background:linear-gradient(to top,var(--bg) 55%,rgba(14,15,18,0));
+  display:none;
+}
+.ptt-dock.on{display:block}
+.ptt-wrap{display:flex;flex-direction:column;align-items:center;gap:8px}
+.ptt{
+  width:min(25vh,150px);height:min(25vh,150px);border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#f05a5a,#c02626 70%);
+  color:#fff;font-weight:800;font-size:17px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  box-shadow:0 0 0 6px rgba(226,59,59,.16),0 10px 28px rgba(0,0,0,.5);
+  border:0;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+}
+.ptt small{font-size:11px;font-weight:600;opacity:.9}
+.ptt.active{background:radial-gradient(circle at 35% 30%,#ff8080,#e23b3b 70%);box-shadow:0 0 0 12px rgba(226,59,59,.25)}
+.ptt[disabled]{filter:grayscale(.6);opacity:.5}
+.ptt-input{display:flex;gap:8px;width:100%}
+.ptt-input .inp{flex:1;min-height:52px}
+.ptt-input .btn{width:auto;min-width:76px;min-height:52px}
+
+/* ---- 2단계 추가: 음성 상태 UI ---- */
+.ptt.rec{
+  background:radial-gradient(circle at 35% 30%,#ff9a9a,#e23b3b 70%);
+  animation:pttPulse 1.1s ease-out infinite;
+}
+@keyframes pttPulse{
+  0%{box-shadow:0 0 0 8px rgba(226,59,59,.35),0 10px 28px rgba(0,0,0,.5)}
+  70%{box-shadow:0 0 0 26px rgba(226,59,59,0),0 10px 28px rgba(0,0,0,.5)}
+  100%{box-shadow:0 0 0 8px rgba(226,59,59,0),0 10px 28px rgba(0,0,0,.5)}
+}
+.ptt-hint{
+  min-height:20px;font-size:13px;color:var(--muted);text-align:center;line-height:1.4;
+  width:100%;padding:0 4px;word-break:break-word;
+}
+.ptt-hint.err{color:#ff9a9a}
+.ptt-hint .it{color:#c8ced6}
+.ptt-confirm{
+  display:none;width:100%;background:var(--surface);border:1px solid var(--amber);
+  border-radius:12px;padding:10px 12px;
+}
+.ptt-confirm.on{display:block}
+.ptt-confirm .ct{font-size:15px;line-height:1.45;word-break:break-word}
+.ptt-confirm .cc{display:flex;align-items:center;gap:10px;margin-top:8px}
+.ptt-confirm .cc .track{flex:1}
+.ptt-confirm .cc .track > i{background:var(--amber);transition:width .1s linear}
+.ptt-confirm .cbtn{font-size:13px;font-weight:700;color:var(--amber);padding:6px 10px;border:1px solid var(--line);border-radius:8px;flex:none}
+.mic-off{opacity:.5}
+
+/* 결과 리포트 */
+.score-hero{text-align:center;padding:18px 14px}
+.score-hero .n{font-size:56px;font-weight:900;line-height:1;letter-spacing:-2px}
+.score-hero .g{font-size:14px;color:var(--muted);margin-top:6px}
+.bar-row{margin-top:12px}
+.bar-row .l{display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px}
+.bar{height:8px;border-radius:999px;background:var(--surface-2);overflow:hidden}
+.bar > i{display:block;height:100%;background:var(--red)}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:13px;padding:6px 10px;border-radius:8px;margin:0 6px 6px 0}
+.tag.ok{background:rgba(63,191,106,.12);color:#7ee2a0;border:1px solid rgba(63,191,106,.3)}
+.tag.miss{background:rgba(226,59,59,.12);color:#ff9a9a;border:1px solid var(--red-dim)}
+.model-line{background:var(--surface-2);border-left:3px solid var(--amber);border-radius:0 10px 10px 0;padding:10px 12px;font-size:14px;line-height:1.6;margin-top:8px;white-space:pre-wrap}
+
+/* ---------- 하단 탭 ---------- */
+nav{
+  position:fixed;left:0;right:0;bottom:0;z-index:30;max-width:560px;margin:0 auto;
+  background:rgba(20,22,27,.97);backdrop-filter:blur(10px);border-top:1px solid var(--line);
+  display:grid;grid-template-columns:repeat(4,1fr);padding-bottom:var(--sab);
+}
+nav button{height:var(--nav-h);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--muted);font-size:11px;font-weight:600}
+nav button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+nav button.on{color:var(--red)}
+
+.empty{text-align:center;color:var(--muted);padding:34px 12px;font-size:14px;line-height:1.7}
+.hr{height:1px;background:var(--line);margin:14px 0}
+.notice{font-size:12px;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:10px 12px;line-height:1.6}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="topbar">
+    <h1 id="topTitle">지휘멘트 훈련</h1>
+    <span class="spacer"></span>
+    <span class="badge" id="topBadge">v0.3</span>
+  </div>
+
+  <main>
+    <!-- ================= 홈 ================= -->
+    <section id="view-home" class="view on"></section>
+    <!-- ================= 훈련 ================= -->
+    <section id="view-train" class="view"></section>
+    <!-- ================= 기록 ================= -->
+    <section id="view-log" class="view"></section>
+    <!-- ================= 설정 ================= -->
+    <section id="view-set" class="view"></section>
+  </main>
+
+  <!-- PTT 도크 (훈련 진행 중에만 표시) -->
+  <div class="ptt-dock" id="pttDock">
+    <div class="ptt-wrap">
+      <button class="ptt" id="pttBtn">송신<small id="pttSub">눌러서 입력</small></button>
+      <div class="ptt-hint" id="pttHint"></div>
+      <div class="ptt-confirm" id="pttConfirm">
+        <div class="ct" id="confirmText"></div>
+        <div class="cc">
+          <div class="track"><i id="confirmFill" style="width:0%"></i></div>
+          <button class="cbtn" id="confirmEdit">수정</button>
+        </div>
+      </div>
+      <div class="ptt-input">
+        <input class="inp" id="pttText" placeholder="지휘멘트를 입력하세요" autocomplete="off" enterkeyhint="send">
+        <button class="btn primary" id="pttSend">전송</button>
+      </div>
+    </div>
+  </div>
+
+  <nav>
+    <button data-tab="home" class="on"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>홈</button>
+    <button data-tab="train"><svg viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M12 12a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v2a4 4 0 0 0 4 4Z"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M8 21h8"/></svg>훈련</button>
+    <button data-tab="log"><svg viewBox="0 0 24 24"><path d="M4 5h16v15a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>기록</button>
+    <button data-tab="set"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9 4.6h.1A1.6 1.6 0 0 0 10 3.1V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v.1a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"/></svg>설정</button>
+  </nav>
+</div>
+
+<script>
+/* ==========================================================================
+   지휘멘트 훈련 웹앱 — 1단계 (골격 + 시나리오 + 텍스트 PTT + 상태머신)
+   2단계: 음성인식/합성  3단계: Gemini 연동+채점  4단계: IndexedDB 저장·약점분석
+   ========================================================================== */
+'use strict';
+
+/* ---------------------------------------------------------------
+   1. 직무별 루브릭 (필수 요소 + 키워드 판정 규칙)
+   --------------------------------------------------------------- */
+const ROLES = {
+  first: {
+    name:'선착대장',
+    desc:'최초 도착대 지휘관 — 초기 상황보고와 판단',
+    items:[
+      {key:'도착보고', label:'도착 보고(호출부호+현장도착)', re:/(도착|현착|현장\s*도착|진입로|여기는)/},
+      {key:'현장개요', label:'건물·현장 개요(용도·층수·규모)', re:/(층|건물|주택|공장|상가|용도|규모|평|㎡|동|아파트|차량|산림|지하)/},
+      {key:'연소범위', label:'연소·상황 범위', re:/(연소|화염|불길|연기|확대|확산|전소|외벽|천장|누출|전복|매몰|침수)/},
+      {key:'인명정보', label:'인명 정보(요구조자 유무)', re:/(요구조자|인명|대피|미확인|갇힘|고립|거주자|재실|부상|사상|환자|구조대상)/},
+      {key:'지원요청', label:'추가 지원 요청 여부', re:/(지원|증원|추가\s*출동|응원|구조대\s*요청|구급대\s*요청|대응\s*[1-3]|굴절|사다리차\s*요청)/}
+    ]
+  },
+  cmd: {
+    name:'지휘대장',
+    desc:'현장지휘관 — 지휘권 인수와 전술 지시',
+    items:[
+      {key:'지휘권인수', label:'지휘권 인수 선언', re:/(지휘권|지휘\s*인수|지휘\s*개시|현장지휘|지휘를\s*맡|본인이\s*지휘)/},
+      {key:'임무부여', label:'대원 임무 부여(진입·검색·급수 등)', re:/(진입|검색|급수|배연|방수|관창|사다리|중계|전개|팀은|대는|반은|담당)/},
+      {key:'안전관리', label:'안전관리 지시(퇴로·붕괴·잔압)', re:/(퇴로|붕괴|잔압|공기호흡기|안전|2인\s*1조|철수|낙하|감전|백드래프트|플래시오버)/},
+      {key:'검색우선', label:'인명검색 우선순위 지정', re:/(우선|먼저|최우선|층부터|순위|집중\s*검색|우선\s*검색)/},
+      {key:'재평가', label:'상황 변화 시 재평가·전략 전환', re:/(재평가|전환|방어|외부\s*방수|전략|변경|재보고|상황\s*재확인|공세|수세)/}
+    ]
+  },
+  chief: {
+    name:'통제단장',
+    desc:'긴급구조통제단장 — 총괄 지휘와 대외 조정',
+    items:[
+      {key:'통제단가동', label:'통제단 가동 선언', re:/(통제단|가동|대응\s*[1-3]\s*단계|비상\s*발령|전면\s*발령)/},
+      {key:'유관기관', label:'유관기관 협조 요청', re:/(경찰|한전|가스|시청|군청|구청|의료|보건소|군|유관기관|협조|지자체|산림청)/},
+      {key:'자원배분', label:'자원 총괄 배분', re:/(자원|배분|투입|배치|펌프|탱크|굴절|헬기|인력|장비|편성|가용)/},
+      {key:'대외보고', label:'대외 상황보고(본부·언론)', re:/(본부|소방본부|보고|언론|브리핑|공보|대외|상황실\s*보고|119종합상황실)/},
+      {key:'장기전', label:'장기전 대비(교대·보급)', re:/(교대|보급|급식|휴식|장기|연료|주유|공기통|대기\s*인력|로테이션)/}
+    ]
+  }
+};
+
+const DIFFS = {
+  basic:  {name:'초급', sub:'기본 상황',      gap:20, window:40},
+  inter:  {name:'중급', sub:'복합 상황',      gap:15, window:30},
+  adv:    {name:'고급', sub:'긴급·돌발 상황', gap:10, window:20}
+};
+
+/* ---------------------------------------------------------------
+   2. 시나리오 데이터
+   facts  : 모범 지휘멘트 생성 재료
+   turns  : 정상 진행 시 부여되는 후속 상황
+   worse  : 지휘 응답 없음일 때 부여되는 악화 상황
+   --------------------------------------------------------------- */
+const TYPES = [
+  {key:'bld',   name:'일반건물'},
+  {key:'high',  name:'고층건물'},
+  {key:'under', name:'지하공간'},
+  {key:'fores', name:'산불'},
+  {key:'traf',  name:'교통사고'},
+  {key:'resc',  name:'구조'},
+  {key:'ems',   name:'구급'}
+];
+
+/* 유형별 기본 전술(모범멘트 생성용) */
+const TACTICS = {
+  bld:   {tasks:'1소대 1층 주방 관창 진입, 2소대 2층 인명검색, 3소대 후면 급수 및 연소확대 저지',
+          safety:'진입대는 퇴로 확보하고 공기호흡기 잔압 100 이하 즉시 보고, 2인 1조 유지',
+          prio:'발화층과 직상층 우선 검색, 화장실·베란다 집중',
+          agencies:'경찰 교통통제, 한전 전기차단, 도시가스 밸브차단 요청',
+          res:'펌프차 3, 탱크차 2, 구조 1, 구급 2 배치, 예비 관창조 대기'},
+  high:  {tasks:'1소대 비상용승강기로 발화층 직하층 집결 후 진입, 2소대 직상층 검색, 3소대 연결송수관 송수',
+          safety:'제연설비 작동 확인, 계단실 퇴로 확보, 공기호흡기 예비용기 직하층 전진 배치',
+          prio:'발화층·직상층·최상층 순 우선 검색, 피난약자 세대 우선',
+          agencies:'경찰 통제선, 한전 전기차단, 관리사무소 방재실 협조',
+          res:'고가·굴절 전면 배치, 예비 공기용기 및 전진지휘소 직하층 설치'},
+  under: {tasks:'1소대 배연 후 진입, 2소대 인명검색, 3소대 연결살수설비 송수 및 급수 확보',
+          safety:'퇴로 유도로프 설치, 공기호흡기 잔압 관리 철저, 진입시간 기록·통제',
+          prio:'출입계단 주변과 정체 구역 우선 검색',
+          agencies:'경찰 통제, 한전 차단, 건물관리자 제연설비 조작 협조',
+          res:'배연차·조명차 우선 투입, 공기용기 보급조 편성'},
+  fores: {tasks:'1소대 민가 방어선 구축, 2소대 방화선 확보, 3소대 잔불 정리 및 급수 중계',
+          safety:'풍향 변화 시 즉시 철수로 확보, 능선 상부 진입 금지, 대원 위치 상시 확인',
+          prio:'민가·요양시설 등 인명 밀집지 우선 방어',
+          agencies:'산림청 헬기, 지자체 주민대피, 경찰 도로통제, 한전 차단 요청',
+          res:'급수 중계 편성, 헬기 담수지 지정, 교대 인력 확보'},
+  traf:  {tasks:'1소대 차량 화재 진압 및 유출유 방지, 구조대 협착자 구조, 구급대 중증도 분류',
+          safety:'후방 방호차량 배치, 2차 사고 대비 유도표지 설치, 반사조끼 착용',
+          prio:'의식 없는 협착 환자 우선 구조',
+          agencies:'경찰 차선통제, 도로공사 상황전파, 권역외상센터 연락',
+          res:'구조 2, 구급 4 이상 확보, 헬기 이송 검토'},
+  resc:  {tasks:'구조 1팀 접근·확보, 2팀 안전조치 및 지지대 설치, 구급대 대기',
+          safety:'2차 붕괴·추락 위험 통제, 안전요원 지정, 생명줄 확보',
+          prio:'생존 가능성 높은 요구조자 우선 접근',
+          agencies:'경찰 통제, 시공사·구조 전문가 협조, 한전 차단',
+          res:'구조장비·중장비 투입, 조명차 배치, 교대조 편성'},
+  ems:   {tasks:'구급 1팀 중증도 분류, 2팀 응급처치소 설치, 나머지 이송 순서 통제',
+          safety:'현장 안전구역 설정 후 진입, 감염방호 착용',
+          prio:'적색(긴급) 환자 우선 이송',
+          agencies:'보건소 재난의료지원팀(DMAT), 권역응급의료센터 수용 가능 병상 확인',
+          res:'구급차 추가 확보, 이송 병원 분산 배정'}
+};
+
+const SCENARIOS = [
+/* ---- 일반건물 ---- */
+{
+  id:'bld1', type:'bld', title:'3층 근린생활시설 화재',
+  detail:'19:40, 3층 근린생활시설 1층 음식점 주방에서 발화. 2·3층은 학원과 사무실이며 영업 중.',
+  facts:{call:'○○1호차', overview:'연면적 약 600㎡ 3층 근린생활시설', fire:'1층 음식점 주방에서 발화하여 천장으로 연소 확대 중',
+         life:'2층 학원 수강생 다수 재실, 요구조자 유무 미확인', support:'인명검색을 위해 구조대 1대, 구급대 2대 추가 지원 요망'},
+  turns:[
+    '상황실입니다. 1층 음식점 내부 화염이 창문 밖으로 분출되고 있습니다. 2층 학원에서 대피 못한 인원이 있다는 신고가 접수됐습니다. 지시 바랍니다.',
+    '2소대입니다. 2층 계단실 연기 농도 높습니다. 진입 계속할지 지시 바랍니다.',
+    '구조대입니다. 3층 사무실에서 요구조자 1명 발견, 의식 있으나 거동 불가합니다. 조치 지시 바랍니다.',
+    '상황실입니다. 인접 건물로 연소확대 우려 신고가 있습니다. 추가 조치 지시 바랍니다.',
+    '1소대입니다. 주방 화점 진압 완료, 잔불 정리 중입니다. 다음 지시 바랍니다.'
+  ],
+  worse:[
+    '지휘 응답 없습니다. 화염이 2층 창문까지 확대됐습니다. 대원들이 대기 중입니다. 즉시 지시 바랍니다.',
+    '지휘 응답 없습니다. 2층 학원에서 구조 요청 신고가 추가 접수됐습니다. 지시 바랍니다.',
+    '지휘 응답 없습니다. 진입대 공기호흡기 경보가 울렸습니다. 지시 바랍니다.'
+  ]
+},
+{
+  id:'bld2', type:'bld', title:'심야 단독주택 화재',
+  detail:'02:15, 노후 단독주택 화재. 거주자 고령 부부 2명, 대피 여부 확인 안 됨.',
+  facts:{call:'○○2호차', overview:'단층 노후 단독주택 1개 동', fire:'주택 후면 거실에서 발화, 지붕으로 연소 확대 중',
+         life:'고령 거주자 2명 재실 추정, 대피 여부 미확인', support:'인명검색 위해 구조대 1대, 구급대 2대 지원 요망'},
+  turns:[
+    '상황실입니다. 이웃 주민이 안방에 할머니가 계신다고 진술했습니다. 지시 바랍니다.',
+    '1소대입니다. 현관 진입 시도 중이나 적재물로 막혀 있습니다. 지시 바랍니다.',
+    '구조대입니다. 안방에서 요구조자 1명 구조했습니다. 나머지 1명 미발견입니다. 지시 바랍니다.',
+    '상황실입니다. 인접 주택 처마로 불티가 날리고 있다는 신고입니다. 지시 바랍니다.',
+    '2소대입니다. 지붕 일부 붕괴 조짐 있습니다. 지시 바랍니다.'
+  ],
+  worse:[
+    '지휘 응답 없습니다. 지붕 전체로 화염이 확대됐습니다. 즉시 지시 바랍니다.',
+    '지휘 응답 없습니다. 진입 대원이 내부 진입 여부를 계속 묻고 있습니다. 지시 바랍니다.'
+  ]
+},
+{
+  id:'bld3', type:'bld', title:'샌드위치패널 공장 화재',
+  detail:'14:05, 샌드위치패널 구조 단층 공장. 화학물질 보관 여부 확인 중, 근로자 30여 명 근무.',
+  facts:{call:'○○3호차', overview:'연면적 약 2,000㎡ 샌드위치패널 단층 공장', fire:'공장 중앙부 발화, 패널 내부로 연소 확대되며 검은 연기 다량 발생',
+         life:'근로자 30여 명 중 대피 인원 확인 중, 미대피자 유무 미확인', support:'대응 1단계 발령 및 화학차·구급대 추가 지원 요망'},
+  turns:[
+    '상황실입니다. 공장 관계자가 내부에 시너 드럼 20통이 있다고 진술합니다. 지시 바랍니다.',
+    '1소대입니다. 패널 내부 연소로 방수 효과가 낮습니다. 전술 지시 바랍니다.',
+    '상황실입니다. 근로자 2명이 확인되지 않는다고 합니다. 지시 바랍니다.',
+    '2소대입니다. 지붕 처짐이 관찰됩니다. 지시 바랍니다.',
+    '상황실입니다. 인근 주민 연기 흡입 신고 3건 접수됐습니다. 지시 바랍니다.'
+  ],
+  worse:[
+    '지휘 응답 없습니다. 드럼 폭발음이 발생했습니다. 즉시 지시 바랍니다.',
+    '지휘 응답 없습니다. 공장 지붕이 일부 붕괴됐습니다. 지시 바랍니다.'
+  ]
+},
+/* ---- 고층건물 ---- */
+{
+  id:'high1', type:'high', title:'25층 주상복합 12층 화재',
+  detail:'21:30, 지상 25층 주상복합 12층 세대 화재. 상층부 연기 확산, 다수 세대 재실.',
+  facts:{call:'○○1호차', overview:'지상 25층 지하 4층 주상복합, 12층 세대 화재', fire:'12층 세대 전체 연소 중, 계단실 통해 상층부로 연기 확산',
+         life:'상층부 다수 세대 재실, 13층 이상 구조요청 신고 접수', support:'대응 1단계 발령, 굴절차·구조대 추가 지원 요망'},
+  turns:[
+    '상황실입니다. 18층 거주자가 연기로 대피 못한다고 신고했습니다. 지시 바랍니다.',
+    '방재실입니다. 제연설비 일부 미작동입니다. 조치 지시 바랍니다.',
+    '1소대입니다. 11층 집결 완료, 연결송수관 송수 준비됐습니다. 지시 바랍니다.',
+    '상황실입니다. 옥상 대피자 다수가 확인됩니다. 지시 바랍니다.',
+    '구조대입니다. 13층 세대에서 요구조자 2명 구조했습니다. 다음 지시 바랍니다.'
+  ],
+  worse:[
+    '지휘 응답 없습니다. 13층으로 연소가 확대됐습니다. 즉시 지시 바랍니다.',
+    '지휘 응답 없습니다. 계단실 연기로 대피 인원이 고립되고 있습니다. 지시 바랍니다.'
+  ]
+},
+{
+  id:'high2', type:'high', title:'아파트 15층 세대 화재',
+  detail:'11:20, 20층 아파트 15층 세대 화재. 세대 내 어린이 단독 재실 신고.',
+  facts:{call:'○○2호차', overview:'지상 20층 아파트 1개 동, 15층 세대 화재', fire:'거실에서 발화하여 세대 내 연소 중, 외벽으로 화염 분출',
+         life:'해당 세대 어린이 1명 단독 재실 신고, 상층 세대 대피 중', support:'구조대 1대, 굴절차, 구급대 2대 추가 지원 요망'},
+  turns:[
+    '상황실입니다. 어린이 보호자가 안방에 아이가 있다고 진술합니다. 지시 바랍니다.',
+    '1소대입니다. 14층 도착, 진입 준비 완료. 지시 바랍니다.',
+    '상황실입니다. 16층에서 연기 유입 신고가 들어왔습니다. 지시 바랍니다.',
+    '구조대입니다. 안방에서 어린이 구조했습니다. 의식 있습니다. 지시 바랍니다.',
+    '1소대입니다. 화점 진압 완료했습니다. 다음 지시 바랍니다.'
+  ],
+  worse:[
+    '지휘 응답 없습니다. 외벽 화염이 16층으로 확대되고 있습니다. 즉시 지시 바랍니다.',
+    '지휘 응답 없습니다. 상층 대피 주민이 계단에 몰려 있습니다. 지시 바랍니다.'
+  ]
+},
+/* ---- 지하공간 ---- */
+{
+  id:'und1', type:'under', title:'지하 2층 주차장 차량화재',
+  detail:'18:50, 대형마트 지하 2층 주차장 전기차 화재. 짙은 연기가 지하 1층까지 확산.',
+  facts:{call:'○○1호차', overview:'대형마트 지하 2층 주차장', fire:'전기차 1대 발화, 인접 차량으로 연소 확대 및 짙은 연기 확산',
+         life:'지하 1층 매장 이용객 대피 중, 주차장 내 잔류자 미확인', support:'배연차·화학차 및 구급대 2대 추가 지원 요망'},
+  turns:[
+    '상황실입니다. 지하 1층에 연기가 가득 찼다는 신고가 다수 접수됐습니다. 지시 바랍니다.',
+    '1소대입니다. 진입로 연기로 시야 확보 곤란합니다. 지시 바랍니다.',
+    '관리실입니다. 제연설비 조작 방법을 문의드립니다. 지시 바랍니다.',
+    '구조대입니다. 주차장 내 차량에서 요구조자 1명 발견했습니다. 지시 바랍니다.',
+    '1소대입니다. 배터리 재발화가 반복되고 있습니다. 지시 바랍니다.'
+  ],
+  worse:[
+    '지휘 응답 없습니다. 연기가 지상 출입구까지 확산됐습니다. 즉시 지시 바랍니다.',
+    '지휘 응답 없습니다. 진입대 공기호흡기 잔압이 부족합니다. 지시 바랍니다.'
+  ]
+},
+{
+  id:'und2', type:'under', title:'지하상가 화재',
+  detail:'16:10, 지하 1층 지하상가 점포 화재. 통로가 길고 출구가 4개소, 이용객 다수.',
+  facts:{call:'○○2호차', overview:'지하 1층 지하상가, 점포 약 80개소', fire:'중앙 통로 점포에서 발화, 통로 따라 연기 급속 확산',
+         life:'이용객 다수 대피 중, 고립자 유무 확인 중', support:'대응 1단계 발령, 배연차·구조대 2대 지원 요망'},
+  turns:[
+    '상황실입니다. 3번 출구 쪽에 사람이 몰려 있다는 신고입니다. 지시 바랍니다.',
+    '1소대입니다. 통로 연기로 화점 확인이 어렵습니다. 지시 바랍니다.',
+    '구조대입니다. 점포 안에 고립된 인원 3명 확인했습니다. 지시 바랍니다.',
+    '상황실입니다. 지하철 연결통로로 연기 유입 신고가 있습니다. 지시 바랍니다.',
+    '2소대입니다. 화점 진압했으나 연기 배출이 지연됩니다. 지시 바랍니다.'
+  ],
+  worse:[
+    '지휘 응답 없습니다. 대피 인원이 출구에서 넘어져 부상자가 발생했습니다. 즉시 지시 바랍니다.',
+    '지휘 응답 없습니다. 연기가 지하철 승강장까지 확산됐습니다. 지시 바랍니다.'
+  ]
+},
+/* ---- 산불 ---- */
+{
+  id:'for1', type:'fores', title:'야산 화재, 민가 인접',
+  detail:'13:00, 야산 중턱 화재. 초속 5m 바람, 산 아래 민가 12세대 위치.',
+  facts:{call:'○○1호차', overview:'야산 중턱 산림 약 2헥타르', fire:'남서풍 초속 5m로 능선 방향 확산 중',
+         life:'산 아래 민가 12세대 거주, 대피 필요 세대 확인 중', support:'산림청 헬기 및 인접 서 펌프차 3대 지원 요망'},
+  turns:[
+    '상황실입니다. 바람이 초속 8m로 강해졌습니다. 지시 바랍니다.',
+    '1소대입니다. 민가 방향 화선이 100m 앞까지 접근했습니다. 지시 바랍니다.',
+    '상황실입니다. 산림청 헬기 2대 출동 가능합니다. 담수지 지정 바랍니다.',
+    '2소대입니다. 급수 차량 접근로가 좁아 중계가 필요합니다. 지시 바랍니다.',
+    '상황실입니다. 일몰까지 2시간 남았습니다. 야간 대비 지시 바랍니다.'
+  ],
+  worse:[
+    '지휘 응답 없습니다. 화선이 민가 50m 앞까지 접근했습니다. 즉시 지시 바랍니다.',
+    '지휘 응답 없습니다. 대원들이 능선 상부에 고립될 우려가 있습니다. 지시 바랍니다.'
+  ]
+},
+{
+  id:'for2', type:'fores', title:'강풍 대형 산불',
+  detail:'05:30, 강풍주의보 발효 중 대형 산불. 확산 속도 빠르고 인근에 요양원 1개소.',
+  facts:{call:'○○지휘차', overview:'산림 약 30헥타르 확산 중인 대형 산불', fire:'초속 12m 강풍으로 비화 발생, 다방향 확산 중',
+         life:'인근 요양원 입소자 40명 및 마을 주민 대피 필요', support:'대응 2단계 발령, 인접 시도 소방력 및 산림청 헬기 다수 요망'},
+  turns:[
+    '상황실입니다. 요양원에서 자력 대피가 어렵다고 합니다. 지시 바랍니다.',
+    '상황실입니다. 인접 시 소방력 20대 도착했습니다. 배치 지시 바랍니다.',
+    '1소대입니다. 비화로 반대편 능선에 새 화점이 생겼습니다. 지시 바랍니다.',
+    '상황실입니다. 언론사에서 브리핑 요청이 들어왔습니다. 지시 바랍니다.',
+    '2소대입니다. 대원 피로도가 높습니다. 지시 바랍니다.'
+  ],
+  worse:[
+    '지휘 응답 없습니다. 화선이 마을 진입로를 차단했습니다. 즉시 지시 바랍니다.',
+    '지휘 응답 없습니다. 요양원 대피가 지연되고 있습니다. 지시 바랍니다.'
+  ]
+},
+/* ---- 교통사고 ---- */
+{
+  id:'tra1', type:'traf', title:'고속도로 다중추돌',
+  detail:'07:20, 안개 구간 고속도로 12중 추돌. 차량 화재 1건, 부상자 다수.',
+  facts:{call:'○○1호차', overview:'고속도로 상행 12중 추돌 현장', fire:'승용차 1대 화재, 유류 유출 확인됨',
+         life:'부상자 15명 내외, 협착 2명 추정', support:'구조 2대, 구급 5대, 경찰 차선통제 요망'},
+  turns:[
+    '상황실입니다. 후속 차량 추돌 위험이 있다는 신고입니다. 지시 바랍니다.',
+    '구조대입니다. 화물차 운전자가 협착돼 있습니다. 지시 바랍니다.',
+    '구급대입니다. 중증 환자 3명입니다. 이송 병원 지시 바랍니다.',
+    '상황실입니다. 헬기 이송이 가능합니다. 지시 바랍니다.',
+    '경찰입니다. 차선 개방 시점을 문의합니다. 지시 바랍니다.'
+  ],
+  worse:[
+    '지휘 응답 없습니다. 후방에서 추가 추돌이 발생했습니다. 즉시 지시 바랍니다.',
+    '지휘 응답 없습니다. 협착 환자 상태가 악화되고 있습니다. 지시 바랍니다.'
+  ]
+},
+{
+  id:'tra2', type:'traf', title:'터널 내 차량사고',
+  detail:'23:40, 길이 1.8km 터널 중앙부 화물차 사고 및 화재. 후속 차량 20여 대 정체.',
+  facts:{call:'○○2호차', overview:'길이 1.8km 터널 중앙부', fire:'화물차 적재함 화재, 터널 내 연기 급속 충만',
+         life:'후속 차량 20여 대 탑승자 대피 필요, 운전자 1명 협착', support:'대응 1단계 발령, 구조 2대·구급 3대 및 반대편 진입대 지원 요망'},
+  turns:[
+    '상황실입니다. 터널 내 대피 인원이 걸어나오고 있습니다. 지시 바랍니다.',
+    '1소대입니다. 제트팬 가동 방향을 문의합니다. 지시 바랍니다.',
+    '구조대입니다. 화물차 운전자 협착 확인했습니다. 지시 바랍니다.',
+    '상황실입니다. 반대편 입구 진입대가 도착했습니다. 지시 바랍니다.',
+    '2소대입니다. 연기가 옅어지고 있습니다. 다음 지시 바랍니다.'
+  ],
+  worse:[
+    '지휘 응답 없습니다. 터널 중앙부 연기가 완전히 충만했습니다. 즉시 지시 바랍니다.',
+    '지휘 응답 없습니다. 대피 인원 중 쓰러진 사람이 있다는 신고입니다. 지시 바랍니다.'
+  ]
+},
+/* ---- 구조 ---- */
+{
+  id:'res1', type:'resc', title:'공사장 붕괴 매몰',
+  detail:'10:15, 지하 굴착 공사장 흙막이 붕괴. 작업자 3명 매몰 추정.',
+  facts:{call:'○○구조1', overview:'지하 12m 굴착 공사장 흙막이 붕괴 현장', fire:'추가 붕괴 위험 있으며 지하수 유입 중',
+         life:'작업자 3명 매몰 추정, 1명 육성 응답 확인', support:'인접 구조대 2대, 중장비 및 구급대 3대 지원 요망'},
+  turns:[
+    '상황실입니다. 시공사가 도면을 제공했습니다. 지시 바랍니다.',
+    '구조대입니다. 육성 응답 지점을 확인했습니다. 지시 바랍니다.',
+    '상황실입니다. 굴착기 2대가 도착했습니다. 지시 바랍니다.',
+    '1팀입니다. 추가 붕괴 조짐이 있습니다. 지시 바랍니다.',
+    '구조대입니다. 요구조자 1명 구조했습니다. 다음 지시 바랍니다.'
+  ],
+  worse:[
+    '지휘 응답 없습니다. 2차 붕괴가 발생했습니다. 즉시 지시 바랍니다.',
+    '지휘 응답 없습니다. 육성 응답이 끊겼습니다. 지시 바랍니다.'
+  ]
+},
+{
+  id:'res2', type:'resc', title:'승강기 갇힘 및 정전',
+  detail:'20:00, 15층 상가 건물 정전으로 승강기 2대 정지. 갇힘 인원 다수, 1명 호흡곤란 호소.',
+  facts:{call:'○○구조2', overview:'지상 15층 상가 건물, 승강기 2대 정지', fire:'화재 없음, 건물 전체 정전 상태',
+         life:'승강기 내 갇힘 6명, 그중 1명 호흡곤란 호소', support:'구급대 2대 및 한전·승강기 관리업체 협조 요망'},
+  turns:[
+    '관리실입니다. 한전 복구까지 1시간 걸린다고 합니다. 지시 바랍니다.',
+    '구조대입니다. 8층과 12층 사이에 승강기가 정지해 있습니다. 지시 바랍니다.',
+    '구급대입니다. 호흡곤란 환자 상태 확인이 필요합니다. 지시 바랍니다.',
+    '상황실입니다. 건물 내 다른 층에도 고립자 신고가 있습니다. 지시 바랍니다.',
+    '구조대입니다. 승강기 1대 개방 완료했습니다. 다음 지시 바랍니다.'
+  ],
+  worse:[
+    '지휘 응답 없습니다. 호흡곤란 환자가 의식을 잃었습니다. 즉시 지시 바랍니다.',
+    '지휘 응답 없습니다. 갇힌 인원들이 자력 탈출을 시도하려 합니다. 지시 바랍니다.'
+  ]
+},
+/* ---- 구급 ---- */
+{
+  id:'ems1', type:'ems', title:'행사장 다수사상자',
+  detail:'19:00, 야외 행사장 구조물 전도. 부상자 20여 명, 중증도 분류 필요.',
+  facts:{call:'○○구급1', overview:'야외 행사장 무대 구조물 전도 현장', fire:'화재 없음, 구조물 추가 전도 위험 있음',
+         life:'부상자 20여 명, 중증 추정 4명, 심정지 1명 의심', support:'구급대 6대, 구조대 1대, 재난의료지원팀 지원 요망'},
+  turns:[
+    '상황실입니다. 인근 병원 수용 가능 병상을 확인했습니다. 지시 바랍니다.',
+    '구급대입니다. 심정지 의심 환자 1명 확인했습니다. 지시 바랍니다.',
+    '상황실입니다. 재난의료지원팀이 20분 후 도착합니다. 지시 바랍니다.',
+    '구조대입니다. 구조물 아래 추가 부상자가 있습니다. 지시 바랍니다.',
+    '구급대입니다. 이송 순서 지시 바랍니다.'
+  ],
+  worse:[
+    '지휘 응답 없습니다. 환자들이 자가용으로 흩어지고 있습니다. 즉시 지시 바랍니다.',
+    '지휘 응답 없습니다. 심정지 환자 처치가 지연되고 있습니다. 지시 바랍니다.'
+  ]
+},
+{
+  id:'ems2', type:'ems', title:'주택 내 심정지 환자',
+  detail:'04:30, 60대 남성 심정지 신고. 가족이 심폐소생술 중, 아파트 12층.',
+  facts:{call:'○○구급2', overview:'아파트 12층 세대 내 심정지 환자 발생', fire:'화재 없음',
+         life:'60대 남성 심정지, 가족이 심폐소생술 시행 중', support:'구급 1대 추가 및 지도의사 연결 요망'},
+  turns:[
+    '상황실입니다. 지도의사 연결 가능합니다. 지시 바랍니다.',
+    '구급대입니다. 자동심장충격기 적용했습니다. 다음 지시 바랍니다.',
+    '상황실입니다. 권역응급의료센터까지 15분 소요됩니다. 지시 바랍니다.',
+    '구급대입니다. 자발순환 회복됐습니다. 지시 바랍니다.',
+    '상황실입니다. 보호자 동승 여부 확인 바랍니다. 지시 바랍니다.'
+  ],
+  worse:[
+    '지휘 응답 없습니다. 환자 상태가 악화되고 있습니다. 즉시 지시 바랍니다.',
+    '지휘 응답 없습니다. 가족이 흥분하여 처치가 방해받고 있습니다. 지시 바랍니다.'
+  ]
+}
+];
+
+/* ---------------------------------------------------------------
+   3. 상태 / 저장소
+   --------------------------------------------------------------- */
+const PREF_KEY = 'fct_prefs_v1';
+const prefs = Object.assign({
+  role:'first', diff:'basic',
+  voiceFeedback:true, voiceURI:'', rate:1.05,
+  haptic:true, model:'gemini-flash-latest',
+  /* 2단계 추가 */
+  sttEnabled:true,            // 음성인식 사용
+  waitAfterSpeech:true,       // AI 발화가 끝난 뒤 응답 카운트다운 시작
+  respWindowMode:'auto',      // auto = 난이도 기본값 / custom = 사용자 지정
+  respWindowSec:40            // custom일 때 초
+}, JSON.parse(localStorage.getItem(PREF_KEY) || '{}'));
+function savePrefs(){ localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); }
+
+/* 1단계: 세션 기록은 메모리 보관. 4단계에서 IndexedDB로 교체 */
+let sessions = [];
+
+const S = {
+  tab:'home',
+  trainStage:'setup',          // setup | run | result
+  cfg:{ role:prefs.role, type:'bld', scenarioId:'bld1', diff:prefs.diff },
+  run:null,
+  viewingSession:null
+};
+
+/* ---------------------------------------------------------------
+   4. 유틸
+   --------------------------------------------------------------- */
+const $  = (s,r)=> (r||document).querySelector(s);
+const $$ = (s,r)=> Array.from((r||document).querySelectorAll(s));
+const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const mmss = s => String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+function humanDur(sec){
+  if(sec<60) return sec+'초';
+  const m=Math.floor(sec/60), h=Math.floor(m/60);
+  return h ? h+'시간 '+(m%60)+'분' : m+'분';
+}
+function fmtDate(ts){
+  const d=new Date(ts), p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}.${p(d.getMonth()+1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function buzz(ms){ if(prefs.haptic && navigator.vibrate) try{ navigator.vibrate(ms); }catch(e){} }
+const scenarioById = id => SCENARIOS.find(s=>s.id===id);
+const typeName = k => (TYPES.find(t=>t.key===k)||{}).name || k;
+
+/* 2단계 추가: 지휘 응답 제한시간 (설정에서 조절 가능) */
+function respWindowFor(diffKey){
+  if(prefs.respWindowMode === 'custom'){
+    const v = parseInt(prefs.respWindowSec, 10);
+    if(v >= 10 && v <= 180) return v;
+  }
+  return DIFFS[diffKey].window;
+}
+
+/* ---------------------------------------------------------------
+   5. 모범 지휘멘트 생성 (직무 × 시나리오)
+   --------------------------------------------------------------- */
+function modelTransmission(roleKey, sc){
+  const f = sc.facts, t = TACTICS[sc.type];
+  if(roleKey==='first'){
+    return `${f.call} 현장 도착. ${f.overview}, ${f.fire}. ${f.life}. ${f.support}. 이상.`;
+  }
+  if(roleKey==='cmd'){
+    return `${f.call} 지휘대장, 지금부터 현장 지휘권을 인수한다.\n`+
+           `${t.tasks}.\n`+
+           `안전관리 — ${t.safety}.\n`+
+           `인명검색은 ${t.prio} 순으로 실시한다.\n`+
+           `10분 후 상황 재평가하여 전략 전환 여부를 판단한다. 각 대는 복창 후 시행하라. 이상.`;
+  }
+  return `${f.call} 통제단장. 지금부터 긴급구조통제단을 가동한다.\n`+
+         `${t.agencies}.\n`+
+         `자원 배분 — ${t.res}.\n`+
+         `소방본부 상황실로 15분 간격 상황보고하고 언론 대응은 공보담당으로 일원화한다.\n`+
+         `장기화 대비하여 ${t.longterm || '2시간 단위 교대조 편성 및 공기용기·급식 보급 라인을 확보한다'}. 이상.`;
+}
+
+/* ---------------------------------------------------------------
+   6. 판정 엔진 (1단계 = 로컬 규칙 기반 목업)
+       → 3단계에서 Gemini 호출로 교체 (동일 시그니처 유지)
+   --------------------------------------------------------------- */
+function judgeLocal(text, roleKey, sc, turnIdx){
+  const items = ROLES[roleKey].items;
+  const checked=[], missed=[];
+  items.forEach(it => (it.re.test(text) ? checked : missed).push(it.key));
+
+  // 무전 응답 생성
+  let reply;
+  if(checked.length===0){
+    reply = '상황실입니다. 송신 내용 불명확합니다. 호출부호와 지시사항 다시 송신 바랍니다.';
+  }else if(checked.length >= items.length-1){
+    reply = `${sc.facts.call} 수신 완료. 지시대로 시행하겠습니다. 각 대 복창합니다. 이상.`;
+  }else{
+    const q = ROLES[roleKey].items.find(i=>missed.includes(i.key));
+    const asks = {
+      '도착보고':'호출부호와 현장 도착 여부를 다시 확인 바랍니다.',
+      '현장개요':'건물 용도와 층수, 규모를 추가로 보고 바랍니다.',
+      '연소범위':'연소 범위와 확대 방향을 알려주십시오.',
+      '인명정보':'요구조자 유무는 어떻게 됩니까?',
+      '지원요청':'추가 지원이 필요합니까?',
+      '지휘권인수':'현장 지휘권 인수 여부를 명확히 해주십시오.',
+      '임무부여':'각 대별 임무를 구체적으로 지정해 주십시오.',
+      '안전관리':'진입대 안전관리 지시가 필요합니다.',
+      '검색우선':'인명검색 우선순위를 지정해 주십시오.',
+      '재평가':'현재 전략을 유지합니까, 전환합니까?',
+      '통제단가동':'통제단 가동 여부를 알려주십시오.',
+      '유관기관':'유관기관 협조는 어디까지 요청할까요?',
+      '자원배분':'가용 자원 배치 지시 바랍니다.',
+      '대외보고':'본부 상황보고 주기를 지정해 주십시오.',
+      '장기전':'교대 및 보급 계획을 지시해 주십시오.'
+    };
+    reply = `수신했습니다. ${asks[q.key] || '추가 지시 바랍니다.'} 이상.`;
+  }
+  return { radio_reply: reply, checked_items: checked, missed_items: missed };
+}
+
+/* 무전 규칙(20) + 상황 적합성(10) — 1단계 로컬 산출 */
+function radioRuleScore(texts){
+  if(!texts.length) return 0;
+  let s = 0;
+  const all = texts.join(' ');
+  const avgLen = texts.reduce((a,t)=>a+t.length,0)/texts.length;
+  if(avgLen <= 160) s += 8; else if(avgLen <= 240) s += 5; else s += 2;      // 간결성
+  if(/(호차|지휘|본부|상황실|구조\d|구급\d|여기는|소대)/.test(all)) s += 7;   // 호출부호
+  if(/(이상|바람|바랍니다|복창|시행하라|확인하라|보고하라)/.test(all)) s += 5; // 복창 유도
+  return Math.min(20, s);
+}
+function relevanceScore(texts, sc){
+  if(!texts.length) return 0;
+  const all = texts.join(' ');
+  const t = TACTICS[sc.type];
+  const bag = (sc.title+' '+sc.detail+' '+t.tasks+' '+t.safety).match(/[가-힣]{2,}/g) || [];
+  const uniq = Array.from(new Set(bag)).slice(0,60);
+  const hit = uniq.filter(w => all.includes(w)).length;
+  return Math.min(10, Math.round(hit/Math.max(6,uniq.length*0.18)*10));
+}
+
+/* ===============================================================
+   6.4 AIRadio — Gemini 연동 (3단계 신규)
+   · API 키는 코드에 없다. 설정 화면에서 입력받아 sessionStorage에만 보관한다.
+   · 실패하면 예외를 던지지 않고 로컬 판정(judgeLocal)으로 되돌아간다.
+   =============================================================== */
+const AIRadio = (function(){
+  const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/';
+  const KEY_NAME = 'gemini_api_key';
+  const TIMEOUT  = 25000;
+
+  const api = { lastError:'', lastLatency:0, callCount:0 };
+
+  api.getKey  = ()=> (sessionStorage.getItem(KEY_NAME) || '').trim();
+  api.setKey  = v => { v ? sessionStorage.setItem(KEY_NAME, String(v).trim()) : sessionStorage.removeItem(KEY_NAME); };
+  api.enabled = ()=> !!api.getKey();
+  api.model   = ()=> (prefs.model || 'gemini-flash-latest').trim();
+
+  /* ---- 저수준 호출 ---- */
+  async function generate(systemText, userText, schema){
+    const key = api.getKey();
+    if(!key) throw new Error('NO_KEY');
+
+    const ctl = new AbortController();
+    const to  = setTimeout(()=> ctl.abort(), TIMEOUT);
+    const t0  = Date.now();
+    try{
+      const body = {
+        systemInstruction:{ parts:[{ text: systemText }] },
+        contents:[{ role:'user', parts:[{ text: userText }] }],
+        generationConfig:{
+          temperature: 0.85,
+          maxOutputTokens: 1200,
+          responseMimeType: 'application/json',
+          responseSchema: schema
+        },
+        safetySettings:[
+          'HARM_CATEGORY_HARASSMENT','HARM_CATEGORY_HATE_SPEECH',
+          'HARM_CATEGORY_SEXUALLY_EXPLICIT','HARM_CATEGORY_DANGEROUS_CONTENT'
+        ].map(c=>({ category:c, threshold:'BLOCK_ONLY_HIGH' }))
+      };
+      /* 키는 URL 쿼리스트링이 아니라 헤더로 보낸다 (브라우저 히스토리·리퍼러·프록시 로그 노출 방지) */
+      const res = await fetch(ENDPOINT + encodeURIComponent(api.model()) + ':generateContent', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'x-goog-api-key': key },
+        referrerPolicy:'no-referrer',
+        body: JSON.stringify(body), signal: ctl.signal
+      });
+      if(!res.ok){
+        const t = await res.text().catch(()=> '');
+        throw new Error('HTTP ' + res.status + (t ? ' — ' + t.slice(0,180) : ''));
+      }
+      const data = await res.json();
+      const cand = (data.candidates || [])[0] || {};
+      const parts = ((cand.content || {}).parts || []);
+      let txt = parts.map(p => p.text || '').join('').trim();
+      if(!txt) throw new Error('EMPTY_RESPONSE');
+      txt = txt.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+      api.lastLatency = Date.now() - t0;
+      api.callCount++;
+      return JSON.parse(txt);
+    } finally {
+      clearTimeout(to);
+    }
+  }
+
+  /* ---- 공통 프롬프트 조각 ---- */
+  function rubricBlock(roleKey){
+    const r = ROLES[roleKey];
+    return `[${r.name}] 필수 요소 — checked_items / missed_items 에는 반드시 아래 key 문자열만 사용한다.\n` +
+      r.items.map((it,i)=> ` ${'①②③④⑤'[i]} key="${it.key}" : ${it.label}`).join('\n');
+  }
+  function sceneBlock(sc, roleKey, diffKey, turn, total){
+    return [
+      `- 지휘관 직무: ${ROLES[roleKey].name}`,
+      `- 상황 유형: ${typeName(sc.type)}`,
+      `- 시나리오: ${sc.title}`,
+      `- 상황 세부: ${sc.detail}`,
+      `- 현장 개요: ${sc.facts.overview} / ${sc.facts.fire} / ${sc.facts.life}`,
+      `- 난이도: ${DIFFS[diffKey].name}(${DIFFS[diffKey].sub})`,
+      `- 진행: ${turn + 1}턴 / 총 ${total}턴`
+    ].join('\n');
+  }
+
+  const SYS_TURN =
+`당신은 대한민국 소방 현장지휘 무전 훈련 시뮬레이터다. 두 가지 역할을 동시에 수행한다.
+
+[역할 1 — 상황실 / 현장대원]
+지휘관의 무전을 받은 상황실 또는 현장 대원으로서 응답한다.
+· 실제 무전처럼 간결하게, 반드시 2~3문장 이내.
+· 지시가 명확하면 복창하고(예: "○○1호차 수신, 2층 인명검색 실시하겠습니다. 이상."),
+  핵심 정보가 빠졌으면 짧게 되묻는다.
+· 반드시 존댓말 무전체를 쓰고 "이상." 또는 "지시 바랍니다."로 끝맺는다.
+· 소설처럼 묘사하지 말고 무전 문장만 쓴다.
+
+[역할 2 — 평가자]
+지휘관의 이번 송신이 직무별 필수 요소 중 무엇을 충족했는지 판정한다.
+· 표현이 달라도 의미가 충족되면 인정한다(예: "현착"=도착보고).
+· 이번 송신만 기준으로 판단하고, 과거 턴은 고려하지 않는다.
+· 제시된 key 문자열 외에는 절대 사용하지 않는다.
+
+[역할 3 — 상황 전개]
+next_situation 에 다음 턴에 부여할 후속 상황을 쓴다.
+· 상황실 또는 현장 대원의 무전 형식, 2~3문장.
+· 지휘관의 조치 결과를 반영해 상황을 진전시킨다.
+· 난이도 초급은 예측 가능한 전개, 중급은 복합 요인 추가, 고급은 돌발·악화 상황을 넣는다.
+· 이번이 마지막 턴이면 빈 문자열("")로 둔다.`;
+
+  const SCHEMA_TURN = {
+    type:'OBJECT',
+    properties:{
+      radio_reply:{ type:'STRING' },
+      checked_items:{ type:'ARRAY', items:{ type:'STRING' } },
+      missed_items:{ type:'ARRAY', items:{ type:'STRING' } },
+      next_situation:{ type:'STRING' }
+    },
+    required:['radio_reply','checked_items','missed_items','next_situation']
+  };
+
+  /* ---- 턴 판정 + 무전 응답 ---- */
+  api.turn = async function(text, roleKey, sc, turnIdx, run){
+    const lastDispatch = (run && run.log) ? (run.log.filter(l=>l.who==='dispatch').slice(-1)[0]||{}).text || '' : '';
+    const user =
+`## 훈련 정보
+${sceneBlock(sc, roleKey, run ? run.diff : 'basic', turnIdx, run ? run.totalTurns : 6)}
+
+## 필수 요소
+${rubricBlock(roleKey)}
+
+## 직전 상황실/현장 무전
+${lastDispatch || '(없음)'}
+
+## 지휘관의 무전 (평가 대상)
+"""${text}"""
+
+위 지휘관 무전에 대해 radio_reply, checked_items, missed_items, next_situation 을 JSON으로 출력하라.`;
+    return await generate(SYS_TURN, user, SCHEMA_TURN);
+  };
+
+  const SYS_EVAL =
+`당신은 대한민국 소방 현장지휘 훈련의 평가관이다. 아래 채점 루브릭에 따라 엄정하게 채점하고 피드백한다.
+
+## 채점 루브릭
+· 필수 요소 충족 70점 = (충족 요소 수 / 필수 요소 수) × 70  → checked_items / missed_items 로 판정
+· 무전 규칙 준수 20점 = 간결성(1회 송신 2~3문장), 호출부호 사용, 복창 유도 표현("이상", "~하라", "보고 바람")
+· 상황 적합성 10점 = 해당 시나리오의 위험요인과 전술에 맞는 지시였는가
+
+## 출력 규칙
+· checked_items / missed_items 는 제시된 key 문자열만 사용한다. 두 배열의 합집합은 전체 필수 요소와 같아야 한다.
+· review(총평)는 3~5문장. 반드시 누락한 요소를 명시하고, 왜 위험한지 실무적으로 지적한다. 존댓말.
+· model_transmission 은 이 시나리오와 직무에 맞는 모범 지휘멘트다.
+  실제 무전으로 그대로 읽을 수 있게 쓰고, 호출부호·구체적 임무 지정·안전관리를 포함한다.
+  줄바꿈으로 구분해 4~6줄, 각 줄은 한 호흡에 송신 가능한 길이로 쓴다.`;
+
+  const SCHEMA_EVAL = {
+    type:'OBJECT',
+    properties:{
+      checked_items:{ type:'ARRAY', items:{ type:'STRING' } },
+      missed_items:{ type:'ARRAY', items:{ type:'STRING' } },
+      radio_score:{ type:'INTEGER' },
+      relevance_score:{ type:'INTEGER' },
+      review:{ type:'STRING' },
+      model_transmission:{ type:'STRING' }
+    },
+    required:['checked_items','missed_items','radio_score','relevance_score','review','model_transmission']
+  };
+
+  /* ---- 세션 총평 ---- */
+  api.evaluate = async function(sess){
+    const sc = scenarioById(sess.scenarioId);
+    const transcript = sess.log.map(l=>{
+      if(l.who==='sys') return `[시스템] ${l.text}`;
+      return (l.who==='dispatch' ? '[상황실/현장] ' : '[지휘관] ') + l.text;
+    }).join('\n');
+    const user =
+`## 훈련 정보
+${sceneBlock(sc, sess.role, sess.diff, 0, 0).split('\n').filter(l=>!l.startsWith('- 진행')).join('\n')}
+- 지휘 응답 없음: ${sess.score.noResponse}회
+- 지휘관 송신 횟수: ${sess.log.filter(l=>l.who==='me').length}회
+
+## 필수 요소
+${rubricBlock(sess.role)}
+
+## 전체 무전 기록
+${transcript}
+
+위 훈련을 루브릭에 따라 채점하고 JSON으로 출력하라.`;
+    return await generate(SYS_EVAL, user, SCHEMA_EVAL);
+  };
+
+  /* ---- 연결 테스트 ---- */
+  api.test = async function(){
+    const t0 = Date.now();
+    const r = await generate(
+      '너는 응답 확인용 에코 서버다.',
+      '{"ok":true} 형태로만 답하라.',
+      { type:'OBJECT', properties:{ ok:{ type:'BOOLEAN' } }, required:['ok'] }
+    );
+    return { ok: !!(r && r.ok), ms: Date.now() - t0 };
+  };
+
+  return api;
+})();
+
+/* 필수 요소 key 화이트리스트 검증 — AI가 엉뚱한 문자열을 보내도 점수가 깨지지 않게 */
+function sanitizeItems(roleKey, arr){
+  const valid = ROLES[roleKey].items.map(i=>i.key);
+  const set = new Set();
+  (Array.isArray(arr) ? arr : []).forEach(k=>{
+    const s = String(k||'').trim();
+    if(valid.includes(s)) set.add(s);
+    else {                                   // 라벨로 보내온 경우 역매핑
+      const hit = ROLES[roleKey].items.find(i => i.label === s || s.indexOf(i.key) >= 0);
+      if(hit) set.add(hit.key);
+    }
+  });
+  return Array.from(set);
+}
+
+/* 턴 판정 통합 진입점 — AI 우선, 실패 시 로컬 판정으로 폴백
+   judgeLocal(text, roleKey, sc, turnIdx)의 시그니처와 반환 형태를 그대로 따른다. */
+async function judgeTurn(text, roleKey, sc, turnIdx, run){
+  if(AIRadio.enabled()){
+    try{
+      const r = await AIRadio.turn(text, roleKey, sc, turnIdx, run);
+      const checked = sanitizeItems(roleKey, r.checked_items);
+      const reply = String(r.radio_reply || '').trim();
+      if(reply){
+        return {
+          radio_reply: reply,
+          checked_items: checked,
+          missed_items: ROLES[roleKey].items.map(i=>i.key).filter(k=>!checked.includes(k)),
+          next_situation: String(r.next_situation || '').trim(),
+          _ai: true
+        };
+      }
+      throw new Error('EMPTY_REPLY');
+    }catch(e){
+      AIRadio.lastError = String((e && e.message) || e);
+      console.warn('[AIRadio.turn] 폴백:', AIRadio.lastError);
+    }
+  }
+  const local = judgeLocal(text, roleKey, sc, turnIdx);
+  local.next_situation = '';
+  local._ai = false;
+  return local;
+}
+
+/* ===============================================================
+   6.5 VoiceIO — 음성 입출력 모듈 (2단계 신규)
+   기존 코드와 이름이 겹치지 않도록 모든 상태를 이 객체 안에 캡슐화한다.
+     VoiceIO.state : 'idle' | 'listening' | 'speaking'
+     VoiceIO.tts   : supported / speak / cancel / setVoice / setRate
+     VoiceIO.stt   : supported / start / stop / abort / onResult / onError
+   =============================================================== */
+const VoiceIO = (function(){
+
+  const SR    = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  const synth = window.speechSynthesis || null;
+
+  /* https(또는 localhost)가 아니면 마이크 권한 자체를 얻을 수 없다 */
+  const secure = (location.protocol === 'https:' ||
+                  location.hostname === 'localhost' ||
+                  location.hostname === '127.0.0.1');
+
+  const api = {
+    state:'idle',
+    secure: secure,
+    micDenied:false,
+    lastError:'',
+    allVoices:[], koVoices:[],
+    stt:{}, tts:{}
+  };
+
+  /* ---- 상태 전이 단일 지점 ---- */
+  let endCbs = [];                       // 발화/인식 종료 대기 콜백 (일회성)
+  function setState(s){
+    if(api.state === s) return;
+    api.state = s;
+    refreshHint();
+    if(s === 'idle') flushEndCbs();
+  }
+  function flushEndCbs(){
+    const list = endCbs; endCbs = [];
+    list.forEach(fn => { try{ fn(); }catch(e){ console.warn(e); } });
+  }
+  /* TTS/STT가 모두 끝난 시점에 콜백 실행 (이미 idle이면 즉시) */
+  function whenIdle(cb){
+    if(api.state === 'idle'){ cb(); return; }
+    endCbs.push(cb);
+  }
+
+  /* =============== TTS =============== */
+  const ttsSupported = !!(synth && window.SpeechSynthesisUtterance);
+  let watchdog = null, speakSeq = 0;
+
+  function loadVoices(){
+    if(!ttsSupported) return;
+    let list = [];
+    try{ list = synth.getVoices() || []; }catch(e){ list = []; }
+    api.allVoices = list;
+    api.koVoices  = list.filter(v => /^ko([-_]|$)/i.test(v.lang || ''));
+    if(typeof window.__onVoicesReady === 'function') window.__onVoicesReady();
+  }
+  if(ttsSupported){
+    loadVoices();
+    try{ synth.addEventListener('voiceschanged', loadVoices); }catch(e){ synth.onvoiceschanged = loadVoices; }
+    /* voiceschanged가 끝내 안 오는 안드로이드 빌드 대비 재시도 */
+    [120, 500, 1500, 3000].forEach(ms => setTimeout(loadVoices, ms));
+  }
+
+  function pickVoice(){
+    if(!api.allVoices.length) return null;
+    if(prefs.voiceURI){
+      const hit = api.allVoices.find(v => v.voiceURI === prefs.voiceURI);
+      if(hit) return hit;
+    }
+    return api.koVoices[0] || null;      // 없으면 null → 브라우저 기본 음성
+  }
+
+  /* Chrome의 긴 발화 끊김(약 15초) 대비: 문장 단위 분할 + resume 워치독 */
+  function splitText(t){
+    const clean = String(t || '').replace(/\s+/g, ' ').trim();
+    if(!clean) return [];
+    const sents = clean.match(/[^.!?…]+[.!?…]*/g) || [clean];
+    const out = [];
+    let buf = '';
+    sents.forEach(s => {
+      s = s.trim(); if(!s) return;
+      if((buf + ' ' + s).trim().length > 110){ if(buf) out.push(buf.trim()); buf = s; }
+      else buf = (buf + ' ' + s).trim();
+    });
+    if(buf) out.push(buf);
+    return out.length ? out : [clean];
+  }
+  function startWatchdog(){
+    stopWatchdog();
+    watchdog = setInterval(()=>{
+      if(!synth) return;
+      try{ if(synth.speaking){ synth.pause(); synth.resume(); } }catch(e){}
+    }, 7000);
+  }
+  function stopWatchdog(){ if(watchdog){ clearInterval(watchdog); watchdog = null; } }
+
+  api.tts.supported = ttsSupported;
+  api.tts.enabled   = ()=> ttsSupported && !!prefs.voiceFeedback;
+  api.tts.setVoice  = uri => { prefs.voiceURI = uri || ''; savePrefs(); };
+  api.tts.setRate   = r   => { prefs.rate = Math.min(2, Math.max(0.5, parseFloat(r) || 1)); savePrefs(); };
+
+  api.tts.speak = function(text, onDone){
+    const finish = ()=>{ if(typeof onDone === 'function') onDone(); };
+    if(!api.tts.enabled() || !text){ setTimeout(finish, 0); return; }
+    if(api.state === 'listening'){ setTimeout(finish, 0); return; }  // 인식 중에는 발화하지 않음(에코 차단)
+
+    try{ synth.cancel(); }catch(e){}                                  // 이전 큐 비우기
+    const chunks = splitText(text);
+    if(!chunks.length){ setTimeout(finish, 0); return; }
+
+    const seq = ++speakSeq;
+    let i = 0, ended = false;
+    setState('speaking');
+    startWatchdog();
+
+    const done = ()=>{
+      if(ended || seq !== speakSeq) return;
+      ended = true; stopWatchdog();
+      if(api.state === 'speaking') setState('idle');
+      finish();
+    };
+    const next = ()=>{
+      if(seq !== speakSeq) return;                                    // cancel/재발화로 무효화
+      if(i >= chunks.length){ done(); return; }
+      const u = new SpeechSynthesisUtterance(chunks[i++]);
+      const v = pickVoice();
+      if(v) u.voice = v;
+      u.lang   = (v && v.lang) || 'ko-KR';
+      u.rate   = Math.min(2, Math.max(0.5, parseFloat(prefs.rate) || 1));
+      u.pitch  = 1; u.volume = 1;
+      u.onend   = next;
+      u.onerror = next;                                               // 에러도 다음으로 넘겨 앱이 멈추지 않게
+      try{ synth.speak(u); }
+      catch(e){ done(); }
+    };
+    next();
+    /* onend가 끝내 안 오는 기기 대비 안전망 (글자수 기반 추정 + 여유) */
+    const est = chunks.join('').length * 110 + 4000;
+    setTimeout(()=>{ if(seq === speakSeq) done(); }, Math.min(est, 60000));
+  };
+
+  api.tts.cancel = function(){
+    speakSeq++;                       // 진행 중 발화 무효화
+    stopWatchdog();
+    if(synth){ try{ synth.cancel(); }catch(e){} }
+    if(api.state === 'speaking') setState('idle');
+  };
+  api.isSpeaking = ()=> api.state === 'speaking';
+
+  /* =============== STT =============== */
+  const sttAvailable = !!SR;
+  let rec = null, running = false, finalText = '', interimText = '', discard = false;
+
+  api.stt.supported = sttAvailable && secure;
+  api.stt.onResult  = null;
+  api.stt.onError   = null;
+
+  function build(){
+    if(rec) return rec;
+    rec = new SR();
+    rec.lang = 'ko-KR';
+    rec.continuous = false;             // PTT 방식
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+
+    rec.onstart = ()=>{ running = true; setState('listening'); };
+
+    rec.onresult = e => {
+      let fin = '', itr = '';
+      for(let i = e.resultIndex; i < e.results.length; i++){
+        const t = e.results[i][0].transcript;
+        if(e.results[i].isFinal) fin += t; else itr += t;
+      }
+      if(fin) finalText += fin;
+      interimText = itr;
+      showInterim((finalText + ' ' + interimText).trim());
+    };
+
+    rec.onerror = e => {
+      const code = (e && e.error) || 'unknown';
+      api.lastError = code;
+      if(code === 'no-speech'){                       // 정상 상황 — 조용히 재시도 유도
+        hint('음성이 감지되지 않았습니다. 버튼을 길게 누른 채 말씀하십시오.', false);
+      }else if(code === 'aborted'){
+        /* 사용자가 취소 — 무시 */
+      }else if(code === 'not-allowed' || code === 'service-not-allowed'){
+        api.micDenied = true;
+        prefs.sttEnabled = false; savePrefs();
+        hint('마이크 권한이 거부되었습니다. 아래 입력창으로 송신하십시오.', true);
+      }else if(code === 'audio-capture'){
+        api.micDenied = true;
+        hint('마이크를 찾을 수 없습니다. 텍스트로 입력하십시오.', true);
+      }else if(code === 'network'){
+        hint('음성인식 네트워크 오류입니다. 텍스트로 입력하십시오.', true);
+      }else{
+        hint('음성인식 오류(' + code + '). 텍스트로 입력하십시오.', true);
+      }
+      if(typeof api.stt.onError === 'function') api.stt.onError(code);
+    };
+
+    rec.onend = ()=>{
+      running = false;
+      if(api.state === 'listening') setState('idle');
+      const txt = (finalText + ' ' + interimText).trim();
+      finalText = ''; interimText = '';
+      if(discard){ discard = false; showInterim(''); return; }
+      showInterim('');
+      if(typeof api.stt.onResult === 'function') api.stt.onResult(txt);
+    };
+    return rec;
+  }
+
+  api.stt.start = function(){
+    if(!api.stt.supported || api.micDenied) return false;
+    if(running) return false;                     // InvalidStateError 방지
+    if(api.state === 'speaking') api.tts.cancel();// 에코 차단: 발화 중엔 먼저 중단
+    finalText = ''; interimText = ''; discard = false;
+    try{ build().start(); return true; }
+    catch(e){                                     // 이미 시작됨 등
+      running = false;
+      if(String(e && e.name) !== 'InvalidStateError'){
+        hint('음성인식을 시작할 수 없습니다. 텍스트로 입력하십시오.', true);
+      }
+      return false;
+    }
+  };
+  api.stt.stop  = function(){ if(running && rec){ try{ rec.stop();  }catch(e){} } };
+  api.stt.abort = function(){ discard = true; if(running && rec){ try{ rec.abort(); }catch(e){} } };
+  api.isListening = ()=> api.state === 'listening';
+
+  /* =============== 화면 힌트 =============== */
+  function hintEl(){ return document.getElementById('pttHint'); }
+  let hintTimer = null;
+  function hint(msg, isErr){
+    const el = hintEl(); if(!el) return;
+    el.className = 'ptt-hint' + (isErr ? ' err' : '');
+    el.textContent = msg || '';
+    clearTimeout(hintTimer);
+    if(msg) hintTimer = setTimeout(()=>{ if(hintEl() === el && el.textContent === msg) refreshHint(); }, 4000);
+  }
+  function showInterim(t){
+    const el = hintEl(); if(!el) return;
+    if(!t){ refreshHint(); return; }
+    clearTimeout(hintTimer);
+    el.className = 'ptt-hint';
+    el.innerHTML = '<span class="it">' + esc(t) + '</span>';
+  }
+  function refreshHint(){
+    const el = hintEl(); if(!el) return;
+    clearTimeout(hintTimer);
+    el.className = 'ptt-hint';
+    if(api.state === 'listening')      el.textContent = '듣는 중… 버튼을 누른 채 말씀하십시오';
+    else if(api.state === 'speaking')  el.textContent = api.usingMic()
+                                          ? '상황실 송신 중 — 누르면 끊고 바로 말할 수 있습니다'
+                                          : '상황실 송신 중 — 누르면 즉시 중단합니다';
+    else if(!api.usingMic())           el.textContent = api.micReason();
+    else                               el.textContent = '';
+    const b = document.getElementById('pttBtn');
+    if(b) b.classList.toggle('rec', api.state === 'listening');
+  }
+  api.refreshHint = refreshHint;
+
+  /* 현재 마이크 입력을 쓰는 상태인가 */
+  api.usingMic = ()=> !!(api.stt.supported && prefs.sttEnabled && !api.micDenied);
+  /* 지원 불가 사유 (설정·홈 안내용 — 사용자 on/off와 무관) */
+  api.unsupportedReason = function(){
+    if(!sttAvailable) return '이 브라우저는 음성인식을 지원하지 않습니다';
+    if(!secure)       return '음성인식은 https 접속에서만 작동합니다 (현재 ' + location.protocol + ')';
+    if(api.micDenied) return '마이크 권한이 거부되었습니다';
+    if(!api.stt.supported) return '이 환경에서는 음성인식을 사용할 수 없습니다';
+    return '';
+  };
+  /* PTT 하단 힌트용 — 사용자가 직접 끈 경우는 안내하지 않는다 */
+  api.micReason = function(){
+    if(!prefs.sttEnabled) return '';
+    const r = api.unsupportedReason();
+    return r ? (r + ' — 텍스트로 입력하십시오') : '';
+  };
+  api.hint = function(enabled){
+    if(!enabled) return '대기 중';
+    return api.usingMic() ? '길게 눌러 말하기' : '눌러서 입력';
+  };
+  api.whenIdle = whenIdle;
+
+  return api;
+})();
+
+/* ---------------------------------------------------------------
+   6.6 음성 ↔ 훈련 루프 연결 (기존 함수는 건드리지 않고 여기서 조립)
+   --------------------------------------------------------------- */
+
+/* 지휘 대기 카운트다운 일시정지 / 재개 — 사용자가 말하는 동안 시간이 깎이지 않게 */
+function pauseAwaitBar(){
+  const r = S.run;
+  if(r && r.state === 'await' && r.bar){ r.awaitLeft = r.bar.left; stopBar(); }
+}
+function resumeAwaitBar(){
+  const r = S.run;
+  if(!r || r.state !== 'await' || r.bar || !r.awaitStart) return;
+  const left = (typeof r.awaitLeft === 'number') ? r.awaitLeft : r.awaitWindow;
+  r.awaitLeft = null;
+  r.awaitStart(Math.max(3, Math.round(left)));
+}
+
+/* 인식 결과 확인 단계: 1.2초 노출 후 자동 전송, 탭하면 수정 */
+let confirmTimer = null, confirmRAF = null;
+function cancelConfirm(){
+  clearInterval(confirmRAF); confirmRAF = null;
+  clearTimeout(confirmTimer); confirmTimer = null;
+  const box = document.getElementById('pttConfirm');
+  if(box) box.classList.remove('on');
+}
+function showConfirm(text){
+  const box = document.getElementById('pttConfirm');
+  const txt = document.getElementById('confirmText');
+  const fill= document.getElementById('confirmFill');
+  if(!box || !txt || !fill){ submitCommand(text); return; }
+  cancelConfirm();
+  txt.textContent = text;
+  fill.style.width = '0%';
+  box.classList.add('on');
+
+  const DUR = 1200, t0 = Date.now();
+  confirmRAF = setInterval(()=>{
+    const p = Math.min(1, (Date.now() - t0) / DUR);
+    fill.style.width = (p * 100) + '%';
+  }, 60);
+  confirmTimer = setTimeout(()=>{
+    cancelConfirm();
+    submitCommand(text);
+  }, DUR);
+}
+function editConfirm(){
+  const txt = document.getElementById('confirmText');
+  const val = txt ? txt.textContent : '';
+  cancelConfirm();
+  const inp = document.getElementById('pttText');
+  if(inp){ inp.value = val; inp.focus(); try{ inp.setSelectionRange(val.length, val.length); }catch(e){} }
+  resumeAwaitBar();
+}
+
+VoiceIO.stt.onResult = function(text){
+  const t = (text || '').trim();
+  if(!t){ resumeAwaitBar(); VoiceIO.refreshHint(); return; }
+  if(!S.run || S.run.state !== 'await'){ VoiceIO.refreshHint(); return; }
+  buzz(15);
+  showConfirm(t);
+};
+VoiceIO.stt.onError = function(){ resumeAwaitBar(); };
+
+/* PTT 제스처 — 기존 핸들러는 그대로 두고 리스너를 추가로 등록한다 */
+(function bindVoicePTT(){
+  const btn = document.getElementById('pttBtn');
+  if(!btn) return;
+  let pressAt = 0, pressing = false;
+  const MIN_PRESS = 150;   // 오작동 방지
+
+  btn.addEventListener('contextmenu', e => e.preventDefault());
+
+  btn.addEventListener('pointerdown', e => {
+    if(btn.disabled) return;
+    cancelConfirm();
+    VoiceIO.tts.cancel();                 // barge-in: AI 발화 즉시 중단
+    if(!VoiceIO.usingMic()){ VoiceIO.refreshHint(); return; }
+    pressing = true; pressAt = Date.now();
+    try{ btn.setPointerCapture(e.pointerId); }catch(err){}
+    pauseAwaitBar();
+    VoiceIO.stt.start();
+  });
+
+  function release(cancelled){
+    if(!pressing) return;
+    pressing = false;
+    const dur = Date.now() - pressAt;
+    btn.classList.remove('rec');
+    if(cancelled || dur < MIN_PRESS){
+      VoiceIO.stt.abort();                // 결과 버림
+      resumeAwaitBar();
+      if(!cancelled) VoiceIO.refreshHint();
+    }else{
+      VoiceIO.stt.stop();                 // 최종 결과 수신
+    }
+  }
+  btn.addEventListener('pointerup',     ()=> release(false));
+  btn.addEventListener('pointercancel', ()=> release(true));
+  btn.addEventListener('pointerleave',  ()=> release(false));
+})();
+
+/* 확인 단계 버튼 */
+(function bindConfirm(){
+  const box = document.getElementById('pttConfirm');
+  const btn = document.getElementById('confirmEdit');
+  if(btn) btn.addEventListener('click', e => { e.stopPropagation(); editConfirm(); });
+  if(box) box.addEventListener('click', editConfirm);
+})();
+
+/* ---------------------------------------------------------------
+   7. 렌더 — 홈
+   --------------------------------------------------------------- */
+function aggregate(){
+  const n = sessions.length;
+  const avg = n ? Math.round(sessions.reduce((a,s)=>a+s.score.total,0)/n) : 0;
+  const dur = sessions.reduce((a,s)=>a+s.durationSec,0);
+  const missCount = {};
+  sessions.forEach(s => (s.score.missed||[]).forEach(k => missCount[k]=(missCount[k]||0)+1));
+  const top = Object.entries(missCount).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  return {n, avg, dur, top};
+}
+function labelOf(key){
+  for(const r of Object.values(ROLES)){
+    const it = r.items.find(i=>i.key===key);
+    if(it) return it.label;
+  }
+  return key;
+}
+
+function renderHome(){
+  const a = aggregate();
+  const recent = sessions.slice(-3).reverse();
+  $('#view-home').innerHTML = `
+    <button class="btn big-start" id="goStart">훈련 시작<small>${ROLES[prefs.role].name} · ${DIFFS[prefs.diff].name}</small></button>
+
+    <div class="sect">누적 현황</div>
+    <div class="stats">
+      <div class="stat"><b>${a.n}</b><span>총 훈련 횟수</span></div>
+      <div class="stat"><b>${a.avg}</b><span>평균 점수</span></div>
+      <div class="stat"><b style="font-size:17px">${humanDur(a.dur)}</b><span>누적 훈련 시간</span></div>
+    </div>
+
+    <div class="sect">최근 훈련</div>
+    ${recent.length ? recent.map(s=>`
+      <button class="list-item" data-open="${s.id}">
+        <div class="grow">
+          <div class="t">${esc(s.scenarioTitle)}</div>
+          <div class="s">${ROLES[s.role].name} · ${DIFFS[s.diff].name} · ${fmtDate(s.startedAt)}</div>
+        </div>
+        <div class="score-chip" style="color:${s.score.total>=80?'var(--ok)':s.score.total>=60?'var(--amber)':'var(--red)'}">${s.score.total}</div>
+      </button>`).join('')
+      : `<div class="empty">아직 훈련 기록이 없습니다.<br>훈련을 시작해 보세요.</div>`}
+
+    <div class="sect">내가 자주 놓치는 요소 TOP 3</div>
+    <div class="card">
+      ${a.top.length ? a.top.map(([k,c],i)=>`
+        <div class="row" style="min-height:40px">
+          <b style="color:var(--red);width:22px">${i+1}</b>
+          <div class="grow" style="flex:1">${esc(labelOf(k))}</div>
+          <span class="badge red">${c}회</span>
+        </div>`).join('')
+        : `<div class="muted small">훈련을 진행하면 누락한 필수 요소가 누적 집계됩니다.</div>`}
+    </div>
+
+    <div class="hr"></div>
+    <div class="notice">
+      ${AIRadio.enabled()
+        ? `AI 상황실이 <b>연결됨</b> (${esc(prefs.model)}). 무전 응답·후속 상황·채점을 AI가 담당합니다.`
+        : `설정에서 <b>Gemini API 키</b>를 입력하면 AI 상황실과 실제로 무전을 주고받을 수 있습니다. 키가 없으면 미리 준비된 시나리오와 로컬 임시 채점으로 훈련합니다.`}
+      ${VoiceIO.stt.supported ? '' : `<br><span style="color:#ff9a9a">음성인식 사용 불가 — ${esc(VoiceIO.unsupportedReason())}. 텍스트 입력으로 훈련하십시오.</span>`}
+      <br>훈련 기록은 현재 브라우저 메모리에만 남습니다(4단계에서 영구 저장 예정).
+    </div>
+  `;
+  $('#goStart').onclick = ()=>{ buzz(15); S.trainStage='setup'; setTab('train'); };
+  $$('#view-home [data-open]').forEach(b=> b.onclick = ()=>{ openSession(b.dataset.open); });
+}
+
+/* ---------------------------------------------------------------
+   8. 렌더 — 훈련 설정
+   --------------------------------------------------------------- */
+function renderTrainSetup(){
+  const cfg = S.cfg;
+  const list = SCENARIOS.filter(s=>s.type===cfg.type);
+  if(!list.some(s=>s.id===cfg.scenarioId)) cfg.scenarioId = list[0].id;
+
+  $('#view-train').innerHTML = `
+    <div class="sect">1. 직무 선택 <span style="color:var(--red)">*</span></div>
+    <div class="chips" id="roleChips">
+      ${Object.entries(ROLES).map(([k,r])=>`<button class="chip grow ${cfg.role===k?'on':''}" data-role="${k}">${r.name}</button>`).join('')}
+    </div>
+    <div class="muted xsmall" style="margin-top:6px">${esc(ROLES[cfg.role].desc)}</div>
+
+    <div class="sect">2. 상황 유형</div>
+    <div class="chips" id="typeChips">
+      ${TYPES.map(t=>`<button class="chip ${cfg.type===t.key?'on':''}" data-type="${t.key}">${t.name}</button>`).join('')}
+    </div>
+
+    <div class="sect">3. 시나리오</div>
+    <div id="scList">
+      ${list.map(s=>`
+        <button class="sc-item ${cfg.scenarioId===s.id?'on':''}" data-sc="${s.id}">
+          <div class="t">${esc(s.title)}</div>
+          <div class="d">${esc(s.detail)}</div>
+        </button>`).join('')}
+    </div>
+
+    <div class="sect">4. 난이도</div>
+    <div class="chips" id="diffChips">
+      ${Object.entries(DIFFS).map(([k,d])=>`
+        <button class="chip grow ${cfg.diff===k?'on':''}" data-diff="${k}" style="flex-direction:column;padding:8px 10px;min-height:60px">
+          <span>${d.name}</span><span class="xsmall muted">${d.sub}</span>
+        </button>`).join('')}
+    </div>
+    <div class="muted xsmall" style="margin-top:6px">후속 상황 간격 ${DIFFS[cfg.diff].gap}초 · 지휘 응답 제한 ${respWindowFor(cfg.diff)}초${prefs.respWindowMode==='custom'?' (설정에서 지정)':''}</div>
+
+    <div class="sect">필수 요소 (채점 기준)</div>
+    <div class="card">
+      ${ROLES[cfg.role].items.map((it,i)=>`<div class="row small" style="min-height:34px"><b style="color:var(--amber);width:20px">${'①②③④⑤'[i]}</b><span>${esc(it.label)}</span></div>`).join('')}
+    </div>
+
+    <div style="height:16px"></div>
+    <button class="btn primary" id="startRun" style="min-height:64px;font-size:18px">훈련 시작</button>
+    <div style="height:20px"></div>
+  `;
+
+  $$('#roleChips [data-role]').forEach(b=> b.onclick=()=>{ S.cfg.role=b.dataset.role; buzz(10); renderTrainSetup(); });
+  $$('#typeChips [data-type]').forEach(b=> b.onclick=()=>{ S.cfg.type=b.dataset.type; buzz(10); renderTrainSetup(); });
+  $$('#scList [data-sc]').forEach(b=> b.onclick=()=>{ S.cfg.scenarioId=b.dataset.sc; buzz(10); renderTrainSetup(); });
+  $$('#diffChips [data-diff]').forEach(b=> b.onclick=()=>{ S.cfg.diff=b.dataset.diff; buzz(10); renderTrainSetup(); });
+  $('#startRun').onclick = startRun;
+}
+
+/* ---------------------------------------------------------------
+   9. 훈련 진행 — 상태 머신
+      states: brief(상황부여) → await(지휘대기) → judge(AI판정) → gap(대기타이머) → …
+   --------------------------------------------------------------- */
+const TOTAL_TURNS_MIN = 5;
+
+function startRun(){
+  const sc = scenarioById(S.cfg.scenarioId);
+  const d = DIFFS[S.cfg.diff];
+  S.run = {
+    id: 'S'+Date.now(),
+    role:S.cfg.role, diff:S.cfg.diff, scenario:sc,
+    startedAt: Date.now(), elapsed:0,
+    turn:0, totalTurns: Math.min(sc.turns.length+1, 6),
+    worseIdx:0, noResponse:0,
+    log:[],                 // {who:'dispatch'|'me'|'sys', text, ts}
+    myTexts:[],
+    checkedAll:new Set(), missedAll:new Set(),
+    state:'idle', timers:{}
+  };
+  S.trainStage='run';
+  renderTrainRun();
+  setTab('train');
+  buzz(30);
+
+  // 최초 상황 부여
+  const f = sc.facts;
+  pushLog('dispatch', `상황실입니다. ${sc.detail} 출동대 현장 도착했습니다. ${ROLES[S.cfg.role].name}님, 지휘 바랍니다.`);
+  startAwait();
+  startClock();
+}
+
+function pushLog(who, text){
+  S.run.log.push({who, text, ts:Date.now()});
+  if(who==='me') S.run.myTexts.push(text);
+  renderLog();
+  if(who==='dispatch') VoiceIO.tts.speak(text);   // 2단계 추가: 상황실 메시지 음성 출력
+}
+
+function startClock(){
+  clearInterval(S.run.timers.clock);
+  S.run.timers.clock = setInterval(()=>{
+    if(!S.run) return;
+    S.run.elapsed = Math.floor((Date.now()-S.run.startedAt)/1000);
+    const el = $('#clock'); if(el) el.textContent = mmss(S.run.elapsed);
+  }, 1000);
+}
+
+/* 지휘 응답 대기 (제한시간 내 미송신 → 악화 상황) */
+function startAwait(){
+  const r = S.run; if(!r) return;
+  r.state='await';
+
+  // 응답 없음 처리 (기존 로직 그대로)
+  const onTimeout = ()=>{
+    const rr = S.run; if(!rr) return;
+    rr.noResponse++;
+    pushLog('sys', '⚠ 지휘 응답 없음 — 상황이 악화됩니다');
+    buzz([40,60,40]);
+    const w2 = rr.scenario.worse[rr.worseIdx % rr.scenario.worse.length]; rr.worseIdx++;
+    rr.turn++;
+    pushLog('dispatch', w2);
+    if(rr.turn >= rr.totalTurns) return finishRun();
+    startAwait();
+  };
+
+  // 2단계: 제한시간을 설정값에서 읽고, 일시정지/재개가 가능하도록 시작 함수를 보관
+  r.awaitWindow = respWindowFor(r.diff);
+  r.awaitLeft   = null;
+  r.awaitStart  = sec => { if(S.run === r && r.state==='await') runBar('지휘 응답 대기 — 송신하십시오', sec, true, onTimeout); };
+
+  setPTTEnabled(true);
+
+  // AI 발화가 끝난 뒤 카운트다운 시작 (설정에서 끌 수 있음)
+  if(prefs.waitAfterSpeech && VoiceIO.state !== 'idle'){
+    VoiceIO.whenIdle(()=>{ if(S.run === r && r.state==='await' && !r.bar) r.awaitStart(r.awaitWindow); });
+  }else{
+    r.awaitStart(r.awaitWindow);
+  }
+}
+
+/* 후속 상황까지의 대기 */
+function startGap(){
+  const r = S.run; if(!r) return;
+  r.state='gap';
+  setPTTEnabled(false);
+  const ti=$('#turnInd'); if(ti) ti.textContent = Math.min(r.turn+1, r.totalTurns);
+  runBar('현장에서 새로운 상황 접수 중...', DIFFS[r.diff].gap, false, ()=>{
+    if(!S.run) return;
+    if(r.turn >= r.totalTurns) return finishRun();
+    const idx = Math.min(r.turn-1, r.scenario.turns.length-1);
+    const nx = r.aiNext; r.aiNext = null;                    // 3단계: AI가 만든 후속 상황 우선
+    pushLog('dispatch', nx || r.scenario.turns[idx]);
+    buzz(25);
+    startAwait();
+  });
+}
+
+/* 진행바 공용 */
+function runBar(caption, seconds, urgent, done){
+  const r = S.run; if(!r) return;
+  clearInterval(r.timers.bar);
+  r.bar = {caption, total:seconds, left:seconds, urgent};
+  renderWait();
+  r.timers.bar = setInterval(()=>{
+    if(!S.run){ clearInterval(r.timers.bar); return; }
+    r.bar.left = Math.max(0, r.bar.left - 0.1);
+    updateWaitBar();
+    if(r.bar.left <= 0){ clearInterval(r.timers.bar); r.bar=null; renderWait(); done(); }
+  }, 100);
+}
+function stopBar(){ if(S.run){ clearInterval(S.run.timers.bar); S.run.bar=null; renderWait(); } }
+
+function renderTrainRun(){
+  const r = S.run, sc = r.scenario;
+  $('#view-train').innerHTML = `
+    <div class="run-head">
+      <div class="info">
+        <div class="nm">${esc(sc.title)}</div>
+        <div class="mt">${ROLES[r.role].name} · ${DIFFS[r.diff].name} · <span id="turnInd">1</span>/${r.totalTurns}턴</div>
+      </div>
+      <div class="clock" id="clock">00:00</div>
+      <button class="btn danger sm" id="endRun">종료</button>
+    </div>
+    <div id="waitZone"></div>
+    <div id="log"></div>
+    <div style="height:calc(min(25vh,150px) + 90px)"></div>
+  `;
+  $('#endRun').onclick = ()=>{ if(confirm('훈련을 종료하고 결과를 확인하시겠습니까?')) finishRun(); };
+  $('#pttDock').classList.add('on');
+  renderLog(); renderWait();
+}
+
+function renderLog(){
+  const box = $('#log'); if(!box || !S.run) return;
+  box.innerHTML = S.run.log.map(m=>{
+    const who = m.who==='dispatch' ? '상황실 / 현장' : m.who==='me' ? '나 (지휘)' : '';
+    if(m.who==='sys') return `<div class="msg sys">${esc(m.text)}</div>`;
+    return `<div class="msg ${m.who}"><span class="who">${who}</span>${esc(m.text)}</div>`;
+  }).join('');
+  const t = $('#turnInd'); if(t) t.textContent = Math.min(S.run.turn+1, S.run.totalTurns);
+  window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'});
+}
+
+function renderWait(){
+  const z = $('#waitZone'); if(!z || !S.run) return;
+  const b = S.run.bar;
+  if(!b){ z.innerHTML=''; return; }
+  z.innerHTML = `
+    <div class="waitbar">
+      <div class="cap"><span>${esc(b.caption)}</span><span id="barLeft">${Math.ceil(b.left)}초</span></div>
+      <div class="track ${b.urgent?'urgent':''}"><i id="barFill" style="width:${b.urgent? (b.left/b.total*100) : (100-b.left/b.total*100)}%"></i></div>
+    </div>`;
+}
+function updateWaitBar(){
+  const b = S.run && S.run.bar; if(!b) return;
+  const fill = $('#barFill'), left = $('#barLeft');
+  if(fill) fill.style.width = (b.urgent ? (b.left/b.total*100) : (100-b.left/b.total*100)) + '%';
+  if(left) left.textContent = Math.ceil(b.left)+'초';
+}
+
+/* 송신 처리 */
+function submitCommand(text){
+  const r = S.run;
+  if(!r || r.state!=='await') return;
+  text = (text||'').trim();
+  if(!text) return;
+  stopBar();
+  setPTTEnabled(false);
+  buzz(20);
+  pushLog('me', text);
+
+  r.state='judge';
+  const th = document.createElement('div');
+  th.className='msg thinking';
+  th.textContent = AIRadio.enabled() ? '상황실 응답 중... (AI 판정)' : '상황실 응답 중...';
+  $('#log').appendChild(th);
+  window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'});
+
+  // 3단계: AI 판정 우선, 실패 시 로컬 판정으로 자동 폴백
+  const t0 = Date.now();
+  judgeTurn(text, r.role, r.scenario, r.turn, r).then(res=>{
+    if(!S.run || S.run !== r) return;                       // 도중에 훈련이 끝났으면 폐기
+    const wait = Math.max(0, 500 - (Date.now() - t0));      // 너무 즉답이면 부자연스러우므로 최소 대기
+    setTimeout(()=>{
+      if(!S.run || S.run !== r) return;
+      (res.checked_items||[]).forEach(k=>r.checkedAll.add(k));
+      r.missedAll = new Set(ROLES[r.role].items.map(i=>i.key).filter(k=>!r.checkedAll.has(k)));
+      if(res.next_situation) r.aiNext = res.next_situation;  // AI가 만든 후속 상황
+      if(res._ai) r.aiTurns = (r.aiTurns||0) + 1;
+      th.remove();
+      pushLog('dispatch', res.radio_reply);
+      r.turn++;
+      if(r.turn >= r.totalTurns) return finishRun();
+      startGap();
+    }, wait);
+  });
+}
+
+function setPTTEnabled(on){
+  const b=$('#pttBtn'), i=$('#pttText'), s=$('#pttSend');
+  if(!b) return;
+  b.disabled=!on; i.disabled=!on; s.disabled=!on;
+  $('#pttSub').textContent = VoiceIO.hint(on);    // 2단계: 음성/텍스트 모드에 따라 안내 문구
+  if(!on){ cancelConfirm(); VoiceIO.stt.abort(); }
+  VoiceIO.refreshHint();
+}
+
+/* ---------------------------------------------------------------
+   10. 종료 및 결과 리포트
+   --------------------------------------------------------------- */
+function finishRun(){
+  const r = S.run; if(!r) return;
+  clearInterval(r.timers.clock); clearInterval(r.timers.bar);
+  VoiceIO.tts.cancel(); VoiceIO.stt.abort(); cancelConfirm();   // 2단계: 음성 정리
+  $('#pttDock').classList.remove('on');
+
+  const items = ROLES[r.role].items;
+  const checked = items.map(i=>i.key).filter(k=>r.checkedAll.has(k));
+  const missed  = items.map(i=>i.key).filter(k=>!r.checkedAll.has(k));
+  const base = Math.round(checked.length/items.length*70);
+  const radio = radioRuleScore(r.myTexts);
+  const rel = relevanceScore(r.myTexts, r.scenario);
+  let total = base+radio+rel;
+  total = Math.max(0, total - r.noResponse*5);  // 무응답 패널티
+
+  const sess = {
+    id:r.id, role:r.role, diff:r.diff,
+    scenarioId:r.scenario.id, scenarioTitle:r.scenario.title,
+    startedAt:r.startedAt, durationSec:Math.max(1, Math.floor((Date.now()-r.startedAt)/1000)),
+    log:r.log.slice(),
+    score:{ total, base, radio, rel, checked, missed, noResponse:r.noResponse, itemCount:items.length },
+    review: buildReview(r, checked, missed, total),
+    modelText: modelTransmission(r.role, r.scenario)
+  };
+  sess.aiTurns = r.aiTurns || 0;
+  sess.aiPending = AIRadio.enabled() && sess.log.some(l=>l.who==='me');
+  sessions.push(sess);           // 4단계: IndexedDB 저장으로 교체
+  S.run = null;
+  S.trainStage='result';
+  S.viewingSession = sess.id;
+  renderResult(sess);
+  buzz([30,50,30]);
+  if(sess.aiPending) enhanceSessionWithAI(sess);   // 3단계: AI 채점·총평 (비동기, 실패해도 로컬 결과 유지)
+}
+
+/* AI 총평으로 결과를 덮어쓴다. 실패하면 로컬 채점 결과가 그대로 남는다. */
+async function enhanceSessionWithAI(sess){
+  try{
+    const r = await AIRadio.evaluate(sess);
+    const items   = ROLES[sess.role].items;
+    const checked = sanitizeItems(sess.role, r.checked_items);
+    const missed  = items.map(i=>i.key).filter(k=>!checked.includes(k));
+    const base    = Math.round(checked.length / items.length * 70);
+    const radio   = Math.max(0, Math.min(20, parseInt(r.radio_score, 10) || 0));
+    const rel     = Math.max(0, Math.min(10, parseInt(r.relevance_score, 10) || 0));
+
+    sess.score.checked = checked;
+    sess.score.missed  = missed;
+    sess.score.base    = base;
+    sess.score.radio   = radio;
+    sess.score.rel     = rel;
+    sess.score.total   = Math.max(0, base + radio + rel - sess.score.noResponse * 5);
+    if(String(r.review||'').trim())             sess.review    = String(r.review).trim();
+    if(String(r.model_transmission||'').trim()) sess.modelText = String(r.model_transmission).trim();
+    sess.aiGraded = true;
+  }catch(e){
+    AIRadio.lastError = String((e && e.message) || e);
+    console.warn('[AIRadio.evaluate] 폴백:', AIRadio.lastError);
+    sess.aiError = AIRadio.lastError;
+  }finally{
+    sess.aiPending = false;
+    if(S.tab==='train' && S.trainStage==='result' && S.viewingSession===sess.id) renderResult(sess);
+    else if(S.tab==='log' && S.viewingSession===sess.id) renderSessionDetail(sess);
+    else if(S.tab==='home') renderHome();
+  }
+}
+
+function buildReview(r, checked, missed, total){
+  const lines=[];
+  lines.push(total>=85 ? '전반적으로 체계적인 지휘였습니다.' : total>=70 ? '기본 골격은 갖췄으나 일부 요소가 빠졌습니다.' : '필수 요소 누락이 많습니다. 표준 양식부터 숙달이 필요합니다.');
+  if(missed.length) lines.push(`특히 ${missed.map(labelOf).join(', ')} 항목이 확인되지 않았습니다.`);
+  if(r.noResponse) lines.push(`지휘 응답 없음이 ${r.noResponse}회 발생했습니다. 판단이 늦어지면 상황은 계속 악화됩니다.`);
+  if(r.myTexts.length && r.myTexts.reduce((a,t)=>a+t.length,0)/r.myTexts.length > 200) lines.push('무전 문장이 깁니다. 핵심만 2~3문장으로 끊어 송신하십시오.');
+  if(!/이상|바랍니다|바람/.test(r.myTexts.join(' '))) lines.push('무전 종료어(이상)와 복창 유도 표현을 사용하십시오.');
+  return lines.join(' ');
+}
+
+function renderResult(s){
+  const items = ROLES[s.role].items;
+  $('#view-train').innerHTML = `
+    <div class="card score-hero">
+      <div class="n" style="color:${s.score.total>=80?'var(--ok)':s.score.total>=60?'var(--amber)':'var(--red)'}">${s.score.total}</div>
+      <div class="g">${esc(s.scenarioTitle)} · ${ROLES[s.role].name} · ${DIFFS[s.diff].name}</div>
+      <div class="g">소요 ${humanDur(s.durationSec)} · 송신 ${s.log.filter(l=>l.who==='me').length}회</div>
+      <div style="margin-top:10px">${gradeBadge(s)}</div>
+    </div>
+
+    <div class="sect">항목별 점수</div>
+    <div class="card">
+      ${bar('필수 요소 충족', s.score.base, 70, `${s.score.checked.length}/${s.score.itemCount}`)}
+      ${bar('무전 규칙 준수', s.score.radio, 20)}
+      ${bar('상황 적합성', s.score.rel, 10)}
+      ${s.score.noResponse? `<div class="small" style="color:#ff9a9a;margin-top:10px">지휘 응답 없음 ${s.score.noResponse}회 · -${s.score.noResponse*5}점</div>`:''}
+    </div>
+
+    <div class="sect">충족 / 누락 요소</div>
+    <div class="card">
+      ${s.score.checked.map(k=>`<span class="tag ok">✓ ${esc(labelOf(k))}</span>`).join('')}
+      ${s.score.missed.map(k=>`<span class="tag miss">✕ ${esc(labelOf(k))}</span>`).join('')}
+      ${!s.score.checked.length && !s.score.missed.length ? '<span class="muted small">데이터 없음</span>':''}
+    </div>
+
+    <div class="sect">총평</div>
+    <div class="card small" style="line-height:1.7">${esc(s.review)}</div>
+
+    <div class="sect">모범 지휘멘트 (${ROLES[s.role].name})</div>
+    <div class="model-line">${esc(s.modelText)}</div>
+
+    <div style="height:18px"></div>
+    <button class="btn primary" id="againBtn">같은 조건으로 다시 훈련</button>
+    <div style="height:8px"></div>
+    <button class="btn ghost" id="detailBtn">전체 무전 로그 보기</button>
+    <div style="height:8px"></div>
+    <button class="btn ghost" id="homeBtn">홈으로</button>
+    <div style="height:20px"></div>
+  `;
+  $('#againBtn').onclick = ()=> startRun();
+  $('#detailBtn').onclick = ()=> openSession(s.id);
+  $('#homeBtn').onclick = ()=>{ S.trainStage='setup'; setTab('home'); };
+}
+/* 채점 출처 배지 — AI 채점 / 로컬 임시 채점 구분 */
+function gradeBadge(s){
+  if(s.aiPending) return `<span class="badge">AI 채점 중…</span>`;
+  if(s.aiGraded)  return `<span class="badge red">AI 채점 · ${esc(prefs.model)}</span>`;
+  if(s.aiError)   return `<span class="badge">로컬 임시 채점 (AI 오류: ${esc(String(s.aiError).slice(0,40))})</span>`;
+  return `<span class="badge">로컬 임시 채점 · API 키 미설정</span>`;
+}
+function bar(label, val, max, note){
+  return `<div class="bar-row">
+    <div class="l"><span>${label}${note?` <span class="muted">${note}</span>`:''}</span><b>${val} / ${max}</b></div>
+    <div class="bar"><i style="width:${Math.round(val/max*100)}%"></i></div>
+  </div>`;
+}
+
+/* ---------------------------------------------------------------
+   11. 기록 탭
+   --------------------------------------------------------------- */
+function renderLogTab(){
+  if(S.viewingSession && S.tab==='log'){
+    const s = sessions.find(x=>x.id===S.viewingSession);
+    if(s) return renderSessionDetail(s);
+  }
+  const list = sessions.slice().reverse();
+  $('#view-log').innerHTML = `
+    <div class="sect">훈련 기록 (${list.length}건)</div>
+    ${list.length ? list.map(s=>`
+      <button class="list-item" data-open="${s.id}">
+        <div class="grow">
+          <div class="t">${esc(s.scenarioTitle)}</div>
+          <div class="s">${ROLES[s.role].name} · ${DIFFS[s.diff].name} · ${fmtDate(s.startedAt)} · ${humanDur(s.durationSec)}</div>
+        </div>
+        <div class="score-chip" style="color:${s.score.total>=80?'var(--ok)':s.score.total>=60?'var(--amber)':'var(--red)'}">${s.score.total}</div>
+      </button>`).join('')
+      : `<div class="empty">저장된 훈련 기록이 없습니다.</div>`}
+    <div style="height:14px"></div>
+    <div class="notice">1단계에서는 기록이 메모리에만 남아 새로고침하면 사라집니다. 4단계에서 IndexedDB 영구 저장으로 교체됩니다.</div>
+  `;
+  $$('#view-log [data-open]').forEach(b=> b.onclick = ()=> openSession(b.dataset.open));
+}
+function openSession(id){
+  S.viewingSession = id;
+  setTab('log');
+}
+function renderSessionDetail(s){
+  $('#view-log').innerHTML = `
+    <button class="btn ghost sm" id="backBtn" style="margin-bottom:12px">‹ 목록으로</button>
+    <div class="card score-hero">
+      <div class="n" style="color:${s.score.total>=80?'var(--ok)':s.score.total>=60?'var(--amber)':'var(--red)'}">${s.score.total}</div>
+      <div class="g">${esc(s.scenarioTitle)} · ${ROLES[s.role].name} · ${DIFFS[s.diff].name}</div>
+      <div class="g">${fmtDate(s.startedAt)} · ${humanDur(s.durationSec)}</div>
+      <div style="margin-top:10px">${gradeBadge(s)}</div>
+    </div>
+
+    <div class="sect">항목별 점수</div>
+    <div class="card">
+      ${bar('필수 요소 충족', s.score.base, 70, `${s.score.checked.length}/${s.score.itemCount}`)}
+      ${bar('무전 규칙 준수', s.score.radio, 20)}
+      ${bar('상황 적합성', s.score.rel, 10)}
+    </div>
+
+    <div class="sect">누락 요소</div>
+    <div class="card">
+      ${s.score.missed.length ? s.score.missed.map(k=>`<span class="tag miss">✕ ${esc(labelOf(k))}</span>`).join('') : '<span class="tag ok">✓ 누락 없음</span>'}
+    </div>
+
+    <div class="sect">AI 총평</div>
+    <div class="card small" style="line-height:1.7">${esc(s.review)}</div>
+
+    <div class="sect">모범 지휘멘트</div>
+    <div class="model-line">${esc(s.modelText)}</div>
+
+    <div class="sect">전체 무전 로그</div>
+    <div id="log" style="display:flex;flex-direction:column;gap:10px">
+      ${s.log.map(m=>{
+        if(m.who==='sys') return `<div class="msg sys">${esc(m.text)}</div>`;
+        const who = m.who==='dispatch' ? '상황실 / 현장' : '나 (지휘)';
+        return `<div class="msg ${m.who}"><span class="who">${who}</span>${esc(m.text)}</div>`;
+      }).join('')}
+    </div>
+    <div style="height:20px"></div>
+  `;
+  $('#backBtn').onclick = ()=>{ S.viewingSession=null; renderLogTab(); };
+}
+
+/* ---------------------------------------------------------------
+   12. 설정 탭
+   --------------------------------------------------------------- */
+function renderSettings(){
+  const key = AIRadio.getKey();
+  $('#view-set').innerHTML = `
+    <div class="sect">AI 연동 (Gemini)</div>
+    <div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <span class="badge ${key?'red':''}">${key?'API 키 입력됨 — AI 판정 사용':'API 키 없음 — 로컬 임시 채점'}</span>
+      </div>
+      <label class="f">Gemini API 키</label>
+      <input class="inp" id="apiKey" type="password" placeholder="AIza... (붙여넣기)" value="${esc(key)}" autocomplete="off" spellcheck="false">
+      <div style="height:8px"></div>
+      <div class="row" style="gap:8px">
+        <button class="btn sm ghost" id="apiTest" style="flex:1">연결 테스트</button>
+        <button class="btn sm danger" id="apiClear" style="flex:1">키 삭제</button>
+      </div>
+      <div class="small" id="apiMsg" style="margin-top:8px;min-height:20px"></div>
+      <div class="hr"></div>
+      <label class="f">사용 모델</label>
+      <input class="inp" id="modelName" value="${esc(prefs.model)}" autocomplete="off" spellcheck="false">
+      <div style="height:10px"></div>
+      <div class="notice">키는 <b>이 브라우저 탭의 메모리(sessionStorage)</b>에만 보관되며 코드나 서버에 저장되지 않습니다. 탭을 닫으면 자동으로 지워지므로 다음에 다시 입력해야 합니다.</div>
+    </div>
+
+    <div class="sect">음성 출력 (AI 무전)</div>
+    <div class="card">
+      ${VoiceIO.tts.supported ? `
+        <div class="switch"><span class="lbl">음성 피드백</span><button class="toggle ${prefs.voiceFeedback?'on':''}" id="tgVoice"></button></div>
+        <div class="hr"></div>
+        <div id="voiceSelWrap" style="display:${VoiceIO.allVoices.length?'block':'none'}">
+          <label class="f">AI 음성 ${VoiceIO.koVoices.length?'(한국어 음성 우선)':'(한국어 음성 없음 — 기본 음성 사용)'}</label>
+          <select class="inp" id="voiceSel"></select>
+          <div style="height:12px"></div>
+        </div>
+        <label class="f">발화 속도 <b id="rateVal">${Number(prefs.rate).toFixed(2)}</b>배 <span class="muted">(느림 0.8 ~ 1.5 빠름)</span></label>
+        <div class="row" style="gap:8px">
+          <button class="btn sm" id="rateDown" style="width:64px;min-height:52px;font-size:22px;font-weight:800">−</button>
+          <input class="range" type="range" id="rate" min="0.8" max="1.5" step="0.05" value="${Math.min(1.5,Math.max(0.8,prefs.rate))}" style="flex:1">
+          <button class="btn sm" id="rateUp" style="width:64px;min-height:52px;font-size:22px;font-weight:800">＋</button>
+        </div>
+        <div style="height:8px"></div>
+        <button class="btn sm ghost" id="ttsTest" style="width:100%">현재 속도로 테스트 재생</button>
+      ` : `<div class="muted small">이 브라우저는 음성 출력을 지원하지 않습니다.</div>`}
+    </div>
+
+    <div class="sect">음성 인식 (지휘멘트 입력)</div>
+    <div class="card">
+      ${VoiceIO.stt.supported ? `
+        <div class="switch"><span class="lbl">PTT 음성인식 사용</span><button class="toggle ${prefs.sttEnabled?'on':''}" id="tgStt"></button></div>
+        <div class="muted xsmall" style="margin-top:4px">끄면 1단계와 동일하게 텍스트 입력으로만 송신합니다.</div>
+      ` : `<div class="muted small">${esc(VoiceIO.unsupportedReason())}</div>
+           <div class="muted xsmall" style="margin-top:6px">텍스트 입력 방식은 그대로 사용할 수 있습니다.</div>`}
+      ${VoiceIO.stt.supported && VoiceIO.micDenied ? `<div class="hr"></div><div class="small" style="color:#ff9a9a">마이크 권한이 거부된 상태입니다. 브라우저 주소창의 자물쇠 아이콘에서 마이크를 허용한 뒤 위 스위치를 다시 켜십시오.</div>` : ''}
+    </div>
+
+    <div class="sect">지휘 응답 제한시간</div>
+    <div class="card">
+      <div class="switch"><span class="lbl">난이도 기본값 사용</span><button class="toggle ${prefs.respWindowMode==='auto'?'on':''}" id="tgWinAuto"></button></div>
+      <div class="muted xsmall">초급 ${DIFFS.basic.window}초 · 중급 ${DIFFS.inter.window}초 · 고급 ${DIFFS.adv.window}초</div>
+      <div id="winCustom" style="display:${prefs.respWindowMode==='custom'?'block':'none'}">
+        <div class="hr"></div>
+        <label class="f">직접 지정 <b id="winVal">${prefs.respWindowSec}</b>초 (모든 난이도 공통)</label>
+        <input class="range" type="range" id="winSec" min="10" max="120" step="5" value="${prefs.respWindowSec}">
+      </div>
+      <div class="hr"></div>
+      <div class="switch"><span class="lbl">AI 발화 후 카운트다운 시작</span><button class="toggle ${prefs.waitAfterSpeech?'on':''}" id="tgWaitSpeech"></button></div>
+      <div class="muted xsmall">켜면 상황실 무전이 끝난 뒤부터 제한시간이 흐릅니다.</div>
+    </div>
+
+    <div class="sect">훈련 기본값</div>
+    <div class="card">
+      <label class="f">기본 직무</label>
+      <select class="inp" id="defRole">${Object.entries(ROLES).map(([k,r])=>`<option value="${k}" ${prefs.role===k?'selected':''}>${r.name}</option>`).join('')}</select>
+      <div style="height:12px"></div>
+      <label class="f">기본 난이도</label>
+      <select class="inp" id="defDiff">${Object.entries(DIFFS).map(([k,d])=>`<option value="${k}" ${prefs.diff===k?'selected':''}>${d.name} (${d.sub})</option>`).join('')}</select>
+      <div class="hr"></div>
+      <div class="switch"><span class="lbl">햅틱 진동</span><button class="toggle ${prefs.haptic?'on':''}" id="tgHaptic"></button></div>
+    </div>
+
+    <div class="sect">데이터</div>
+    <div class="card">
+      <button class="btn danger" id="clearBtn">훈련 기록 전체 삭제</button>
+    </div>
+    <div style="height:20px"></div>
+    <div class="muted xsmall" style="text-align:center">지휘멘트 훈련 v0.3 · 3단계 AI 연동<br>접속 방식: ${esc(location.protocol)}${VoiceIO.secure?' (음성인식 가능)':' (음성인식 불가 — https 필요)'}</div>
+    <div style="height:20px"></div>
+  `;
+
+  const on = (sel, ev, fn) => { const el = $(sel); if(el) el[ev] = fn; };
+
+  const apiMsg = (t, err) => { const el = $('#apiMsg'); if(el){ el.textContent = t; el.style.color = err ? '#ff9a9a' : 'var(--ok)'; } };
+
+  on('#apiKey','onchange', e => { AIRadio.setKey(e.target.value); apiMsg(e.target.value.trim() ? '키를 저장했습니다. 연결 테스트를 눌러 확인하십시오.' : '키를 삭제했습니다.'); });
+  on('#apiClear','onclick', ()=>{ AIRadio.setKey(''); buzz(20); renderSettings(); });
+  on('#apiTest','onclick', async e => {
+    const b = e.currentTarget;
+    if(!AIRadio.enabled()){ apiMsg('먼저 API 키를 입력하십시오.', true); return; }
+    b.disabled = true; apiMsg('연결 확인 중...');
+    try{
+      const r = await AIRadio.test();
+      apiMsg(r.ok ? `연결 정상 · 응답 ${r.ms}ms · 모델 ${AIRadio.model()}` : '응답이 올바르지 않습니다.', !r.ok);
+    }catch(err){
+      const m = String((err && err.message) || err);
+      apiMsg(m.indexOf('HTTP 400')>=0 ? '키 또는 모델명이 올바르지 않습니다. ' + m.slice(0,80)
+           : m.indexOf('HTTP 403')>=0 ? '키 권한이 없습니다. Google AI Studio에서 키를 다시 확인하십시오.'
+           : m.indexOf('HTTP 429')>=0 ? '요청 한도를 초과했습니다. 잠시 후 다시 시도하십시오.'
+           : '연결 실패: ' + m.slice(0,120), true);
+    }finally{ b.disabled = false; }
+  });
+  on('#modelName','onchange', e => { prefs.model = e.target.value.trim() || 'gemini-flash-latest'; savePrefs(); apiMsg('모델을 변경했습니다. 연결 테스트를 권장합니다.'); });
+  on('#tgVoice','onclick', e => { prefs.voiceFeedback=!prefs.voiceFeedback; e.currentTarget.classList.toggle('on',prefs.voiceFeedback); savePrefs(); buzz(10); if(!prefs.voiceFeedback) VoiceIO.tts.cancel(); });
+  on('#tgHaptic','onclick', e => { prefs.haptic=!prefs.haptic; e.currentTarget.classList.toggle('on',prefs.haptic); savePrefs(); buzz(10); });
+  const applyRate = v => {
+    const nv = Math.min(1.5, Math.max(0.8, Math.round(v*20)/20));
+    VoiceIO.tts.setRate(nv);
+    const sl = $('#rate'); if(sl) sl.value = nv;
+    const lb = $('#rateVal'); if(lb) lb.textContent = nv.toFixed(2);
+  };
+  on('#rate','oninput', e => applyRate(parseFloat(e.target.value)));
+  on('#rateDown','onclick', ()=>{ applyRate(prefs.rate - 0.05); buzz(10); VoiceIO.tts.speak('현재 속도입니다.'); });
+  on('#rateUp','onclick',   ()=>{ applyRate(prefs.rate + 0.05); buzz(10); VoiceIO.tts.speak('현재 속도입니다.'); });
+  on('#defRole','onchange', e => { prefs.role=e.target.value; S.cfg.role=e.target.value; savePrefs(); });
+  on('#defDiff','onchange', e => { prefs.diff=e.target.value; S.cfg.diff=e.target.value; savePrefs(); });
+
+  /* 2단계 추가 핸들러 */
+  on('#tgStt','onclick', e => {
+    prefs.sttEnabled=!prefs.sttEnabled; e.currentTarget.classList.toggle('on',prefs.sttEnabled);
+    savePrefs(); buzz(10);
+    if(prefs.sttEnabled) VoiceIO.micDenied = false;   // 권한을 허용한 뒤 재시도할 수 있게 리셋
+    else VoiceIO.stt.abort();
+    VoiceIO.refreshHint(); renderSettings();
+  });
+  on('#tgWaitSpeech','onclick', e => { prefs.waitAfterSpeech=!prefs.waitAfterSpeech; e.currentTarget.classList.toggle('on',prefs.waitAfterSpeech); savePrefs(); buzz(10); });
+  on('#tgWinAuto','onclick', e => {
+    prefs.respWindowMode = (prefs.respWindowMode==='auto') ? 'custom' : 'auto';
+    e.currentTarget.classList.toggle('on', prefs.respWindowMode==='auto');
+    $('#winCustom').style.display = prefs.respWindowMode==='custom' ? 'block' : 'none';
+    savePrefs(); buzz(10);
+  });
+  on('#winSec','oninput', e => { prefs.respWindowSec=parseInt(e.target.value,10); $('#winVal').textContent=prefs.respWindowSec; savePrefs(); });
+  on('#ttsTest','onclick', ()=> VoiceIO.tts.speak('상황실입니다. 지휘 바랍니다. 이상.'));
+
+  /* AI 음성 목록 — 실제 사용 가능한 음성으로 동적 구성, 없으면 UI 숨김 */
+  function fillVoices(){
+    const sel = $('#voiceSel'), wrap = $('#voiceSelWrap');
+    if(!sel || !wrap) return;
+    const list = VoiceIO.koVoices.length ? VoiceIO.koVoices : VoiceIO.allVoices;
+    if(!list.length){ wrap.style.display='none'; return; }
+    wrap.style.display='block';
+    sel.innerHTML = '<option value="">자동 선택</option>' +
+      list.map(v=>`<option value="${esc(v.voiceURI)}" ${prefs.voiceURI===v.voiceURI?'selected':''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('');
+    sel.onchange = e => VoiceIO.tts.setVoice(e.target.value);
+  }
+  fillVoices();
+  window.__onVoicesReady = ()=>{ if(S.tab==='set') fillVoices(); };   // 목록이 늦게 도착하는 경우 대비
+  $('#clearBtn').onclick = ()=>{ if(confirm('모든 훈련 기록을 삭제합니다. 계속할까요?')){ sessions=[]; S.viewingSession=null; buzz(40); alert('삭제했습니다.'); } };
+}
+
+/* ---------------------------------------------------------------
+   13. 탭 전환 / PTT 바인딩
+   --------------------------------------------------------------- */
+const TAB_TITLE = {home:'지휘멘트 훈련', train:'훈련', log:'훈련 기록', set:'설정'};
+function setTab(tab){
+  S.tab = tab;
+  $$('nav button').forEach(b=> b.classList.toggle('on', b.dataset.tab===tab));
+  $$('.view').forEach(v=> v.classList.remove('on'));
+  $('#view-'+tab).classList.add('on');
+  $('#topTitle').textContent = TAB_TITLE[tab];
+  $('#pttDock').classList.toggle('on', tab==='train' && S.trainStage==='run');
+  window.scrollTo(0,0);
+
+  if(tab==='home') renderHome();
+  if(tab==='log')  renderLogTab();
+  if(tab==='set')  renderSettings();
+  if(tab==='train'){
+    if(S.trainStage==='run' && S.run) renderTrainRun();
+    else if(S.trainStage==='result'){
+      const s = sessions.find(x=>x.id===S.viewingSession);
+      s ? renderResult(s) : (S.trainStage='setup', renderTrainSetup());
+    }
+    else renderTrainSetup();
+  }
+}
+$$('nav button').forEach(b=> b.onclick = ()=>{
+  if(S.run && b.dataset.tab!=='train'){
+    if(!confirm('훈련이 진행 중입니다. 나가면 훈련이 종료됩니다.')) return;
+    finishRun();
+  }
+  if(b.dataset.tab==='log') S.viewingSession=null;
+  buzz(8);
+  setTab(b.dataset.tab);
+});
+
+/* PTT — 1단계: 텍스트 입력 방식.
+   2단계에서 pointerdown/up 구간에 SpeechRecognition을 연결합니다. */
+const pttBtn=$('#pttBtn'), pttText=$('#pttText'), pttSend=$('#pttSend');
+pttBtn.addEventListener('pointerdown', e=>{ e.preventDefault(); pttBtn.classList.add('active'); buzz(12); });
+['pointerup','pointercancel','pointerleave'].forEach(ev=> pttBtn.addEventListener(ev, ()=> pttBtn.classList.remove('active')));
+pttBtn.addEventListener('click', ()=>{ if(!VoiceIO.usingMic()) pttText.focus(); });  // 2단계: 음성 모드에선 키보드 미노출
+pttSend.onclick = ()=>{ cancelConfirm(); submitCommand(pttText.value); pttText.value=''; };
+pttText.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); pttSend.click(); } });
+
+/* 2단계: 화면을 벗어나거나 앱이 백그라운드로 가면 음성 정리 */
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){ VoiceIO.tts.cancel(); VoiceIO.stt.abort(); cancelConfirm(); }
+});
+
+/* 초기 렌더 */
+setTab('home');
+VoiceIO.refreshHint();
+</script>
+</body>
+</html>

@@ -464,7 +464,7 @@ nav button.on{color:var(--red)}
   <div class="topbar">
     <h1 id="topTitle">지휘멘트 훈련</h1>
     <span class="spacer"></span>
-    <span class="badge" id="topBadge">v1.0</span>
+    <span class="badge" id="topBadge">v1.1</span>
   </div>
 
   <main>
@@ -1196,7 +1196,7 @@ const Backup = (function(){
       format: FORMAT,
       version: VERSION,
       exportedAt: new Date().toISOString(),
-      app: 'v1.0',
+      app: 'v1.1',
       note: '이 파일에는 기기에 저장된 훈련 데이터가 들어 있습니다. 공개 저장소나 단체 대화방에 올리지 마십시오. API 키는 포함되어 있지 않습니다.',
       prefs: Object.assign({}, prefs),
       data
@@ -2538,6 +2538,28 @@ const VoiceIO = (function(){
      버튼을 누르고 있는 한 자동으로 다시 켜서, 10초든 20초든
      말한 내용을 이어 모은다. (예전에는 첫 끊김에서 그대로 잘렸다) */
   let holding = false, stopping = false, restartTimer = null, sessionText = '';
+  let restarts = 0, lastRestartAt = 0;
+
+  /* 조각들을 공백 하나로 이어 붙인다 */
+  function joinParts(){
+    return Array.prototype.slice.call(arguments)
+      .map(s => String(s || '').trim()).filter(Boolean).join(' ')
+      .replace(/\s+/g, ' ').trim();
+  }
+  /* 같은 구절이 세 번 넘게 잇달아 나오면 한 번으로 줄인다.
+     인식 엔진이 결과를 되풀이해 보내는 기기에 대한 마지막 방어선.
+     (두 번까지는 실제 무전에서도 쓰므로 건드리지 않는다) */
+  function collapseRepeats(s){
+    let t = String(s || '').replace(/\s+/g, ' ').trim();
+    if(!t || t.length > 6000) return t;
+    let prev;
+    let guard = 0;
+    do{
+      prev = t;
+      t = t.replace(/(\S.{5,39}?)(?:\s*\1){2,}/g, '$1');
+    }while(t !== prev && guard++ < 5);
+    return t.trim();
+  }
 
   api.stt.supported = sttAvailable && secure;
   api.stt.onResult  = null;
@@ -2553,22 +2575,31 @@ const VoiceIO = (function(){
 
     rec.onstart = ()=>{ running = true; setState('listening'); };
 
+    /* 안드로이드 음성인식은 이벤트마다 resultIndex 를 0으로 주는 기기가 있다.
+       바뀐 부분만 이어 붙이면 같은 말이 눈덩이처럼 불어나므로,
+       매 이벤트마다 결과 목록 전체를 보고 문장을 통째로 다시 만든다. */
     rec.onresult = e => {
       let fin = '', itr = '';
-      for(let i = e.resultIndex; i < e.results.length; i++){
-        const t = e.results[i][0].transcript;
-        if(e.results[i].isFinal) fin += t; else itr += t;
+      for(let i = 0; i < e.results.length; i++){
+        const r0 = e.results[i];
+        if(!r0 || !r0[0]) continue;
+        const t = String(r0[0].transcript || '').trim();
+        if(!t) continue;
+        if(r0.isFinal) fin = fin ? (fin + ' ' + t) : t;
+        else           itr = itr ? (itr + ' ' + t) : t;
       }
-      if(fin) finalText += fin;
+      finalText   = fin;          // ← 누적하지 않고 매번 새로 만든다
       interimText = itr;
-      showInterim((sessionText + ' ' + finalText + ' ' + interimText).trim());
+      showInterim(joinParts(sessionText, finalText, interimText));
     };
 
     rec.onerror = e => {
       const code = (e && e.error) || 'unknown';
       api.lastError = code;
-      if(code === 'no-speech'){                       // 정상 상황 — 조용히 재시도 유도
-        hint('음성이 감지되지 않았습니다. 버튼을 길게 누른 채 말씀하십시오.', false);
+      if(code === 'no-speech'){
+        /* 말을 잠깐 쉬면 나는 소리다. 버튼을 누르고 있는 중이면
+           곧 자동으로 다시 켜지므로 안내를 띄우지 않는다. */
+        if(!holding) hint('음성이 감지되지 않았습니다. 버튼을 길게 누른 채 말씀하십시오.', false);
       }else if(code === 'aborted'){
         /* 사용자가 취소 — 무시 */
       }else if(code === 'not-allowed' || code === 'service-not-allowed'){
@@ -2588,27 +2619,36 @@ const VoiceIO = (function(){
 
     rec.onend = ()=>{
       running = false;
-      /* 이번 구간에서 들은 말을 누적해 둔다 */
-      const piece = (finalText + ' ' + interimText).trim();
-      if(piece) sessionText = (sessionText + ' ' + piece).trim();
+      /* 이번 구간에서 들은 말을 누적한다.
+         이미 같은 말로 끝나 있으면 덧붙이지 않는다 (되풀이 방지) */
+      const piece = joinParts(finalText, interimText);
+      if(piece && !sessionText.endsWith(piece)) sessionText = joinParts(sessionText, piece);
       finalText = ''; interimText = '';
 
       /* 버튼을 아직 누르고 있다면 = 사용자는 계속 말하는 중이다.
-         인식기가 혼자 끝난 것이므로 즉시 다시 켠다. */
+         인식기가 혼자 끝난 것이므로 즉시 다시 켠다.
+         다만 엔진이 곧바로 끝나기를 되풀이하면 무한히 다시 켜지 않도록 막는다. */
       if(holding && !stopping && !discard){
-        clearTimeout(restartTimer);
-        restartTimer = setTimeout(()=>{
-          if(!holding || stopping || discard) return;
-          try{ build().start(); }
-          catch(e){ /* 이미 켜져 있으면 무시 */ }
-        }, 120);
-        showInterim(sessionText);
-        return;
+        const now = Date.now();
+        const tooFast = (now - lastRestartAt) < 150;
+        if(restarts < 60 && !(tooFast && restarts > 8)){
+          restarts++; lastRestartAt = now;
+          clearTimeout(restartTimer);
+          restartTimer = setTimeout(()=>{
+            if(!holding || stopping || discard) return;
+            try{ build().start(); }
+            catch(e){ /* 이미 켜져 있으면 무시 */ }
+          }, 150);
+          showInterim(sessionText);
+          return;
+        }
+        holding = false;              // 더 이상 되살리지 않고 여기서 마무리
+        hint('음성인식이 계속 끊겨 여기까지만 받았습니다.', true);
       }
 
       stopping = false;
       if(api.state === 'listening') setState('idle');
-      const txt = sessionText.trim();
+      const txt = collapseRepeats(sessionText);
       sessionText = '';
       if(discard){ discard = false; showInterim(''); return; }
       showInterim('');
@@ -2623,6 +2663,7 @@ const VoiceIO = (function(){
     holding = true; stopping = false; discard = false;
     clearTimeout(restartTimer);
     finalText = ''; interimText = ''; sessionText = '';
+    restarts = 0; lastRestartAt = 0;
     if(running) return true;                      // 이미 듣는 중이면 그대로 이어간다
     try{ build().start(); return true; }
     catch(e){                                     // 이미 시작됨 등
@@ -2639,8 +2680,9 @@ const VoiceIO = (function(){
     holding = false; stopping = true;
     clearTimeout(restartTimer);
     if(running && rec){ try{ rec.stop(); }catch(e){} }
-    else if(sessionText.trim()){                  // 이미 꺼져 있으면 직접 마무리
-      const txt = sessionText.trim(); sessionText = ''; stopping = false;
+    else if(joinParts(sessionText, finalText, interimText)){   // 이미 꺼져 있으면 직접 마무리
+      const txt = collapseRepeats(joinParts(sessionText, finalText, interimText));
+      sessionText = ''; finalText = ''; interimText = ''; stopping = false;
       if(api.state === 'listening') setState('idle');
       showInterim('');
       if(typeof api.stt.onResult === 'function') api.stt.onResult(txt);
@@ -4562,7 +4604,7 @@ function renderSettings(){
       <div class="muted xsmall" style="margin-top:8px">초기화는 되돌릴 수 없습니다. 먼저 백업을 내보내는 것을 권합니다.</div>
     </div>
     <div style="height:20px"></div>
-    <div class="muted xsmall" style="text-align:center">지휘멘트 훈련 v1.0 · 무전 흐름 개선<br>접속 방식: ${esc(location.protocol)}${VoiceIO.secure?' (음성인식 가능)':' (음성인식 불가 — https 필요)'}</div>
+    <div class="muted xsmall" style="text-align:center">지휘멘트 훈련 v1.1 · 음성입력 안정화<br>접속 방식: ${esc(location.protocol)}${VoiceIO.secure?' (음성인식 가능)':' (음성인식 불가 — https 필요)'}</div>
     <div style="height:20px"></div>
   `;
 

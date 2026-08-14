@@ -455,6 +455,33 @@ nav button.on{color:var(--red)}
 .sec-row .tx{flex:1}
 .sec-row .tx b{display:block;font-size:13.5px;margin-bottom:1px}
 .sec-row .tx span{color:var(--muted);font-size:12px}
+
+/* ---- v1.4 추가: 지휘역량 프로파일 ---- */
+.prof-top{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.prof-score{font-size:30px;font-weight:900;letter-spacing:-1px;line-height:1}
+.delta{font-size:13px;font-weight:800}
+.delta.up{color:var(--ok)} .delta.down{color:#ff9a9a} .delta.same{color:var(--muted)}
+.prof-row{display:flex;gap:10px;padding:9px 0;font-size:14px;align-items:flex-start}
+.prof-row + .prof-row{border-top:1px solid var(--line)}
+.prof-row .pk{width:82px;flex:none;color:var(--muted);font-size:12.5px;padding-top:1px}
+.prof-row .pv{flex:1;min-width:0}
+.prof-row .pv .why{display:block;font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5}
+.lvl{display:inline-block;font-size:10px;font-weight:800;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:1px}
+.lvl.safety,.lvl.intensive{background:rgba(226,59,59,.18);color:#ff9a9a;border:1px solid var(--red-dim)}
+.lvl.focus{background:rgba(245,132,43,.16);color:#ffb877;border:1px solid rgba(245,132,43,.35)}
+.lvl.recurring{background:rgba(245,132,43,.11);color:#ffc08a;border:1px solid rgba(245,132,43,.25)}
+.lvl.attention,.lvl.observation{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.sk-row{margin-top:11px}
+.sk-row .l{display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-bottom:5px}
+.sk-row .l .nm{flex:1;min-width:0}
+.sk-row .l .vv{flex:none;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.sk-bar{height:7px;border-radius:999px;background:var(--surface-2);overflow:hidden}
+.sk-bar > i{display:block;height:100%}
+.sk-bar > i.good{background:var(--ok)}
+.sk-bar > i.mid{background:var(--amber)}
+.sk-bar > i.low{background:var(--red)}
+.arrow{font-size:11px;font-weight:800;margin-left:3px}
+.arrow.up{color:var(--ok)} .arrow.down{color:#ff9a9a} .arrow.flat{color:#6b7480}
 .hr{height:1px;background:var(--line);margin:14px 0}
 .notice{font-size:12px;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:10px 12px;line-height:1.6}
 </style>
@@ -464,7 +491,7 @@ nav button.on{color:var(--red)}
   <div class="topbar">
     <h1 id="topTitle">지휘멘트 훈련</h1>
     <span class="spacer"></span>
-    <span class="badge" id="topBadge">v1.2</span>
+    <span class="badge" id="topBadge">v1.4</span>
   </div>
 
   <main>
@@ -478,6 +505,8 @@ nav button.on{color:var(--red)}
     <section id="view-set" class="view"></section>
     <!-- ========= 내 자료 관리 / 편집기 (탭 없음) ========= -->
     <section id="view-manage" class="view"></section>
+    <!-- ========= 나의 지휘역량 상세 (탭 없음) ========= -->
+    <section id="view-profile" class="view"></section>
   </main>
 
   <!-- PTT 도크 (훈련 진행 중에만 표시) -->
@@ -1196,7 +1225,7 @@ const Backup = (function(){
       format: FORMAT,
       version: VERSION,
       exportedAt: new Date().toISOString(),
-      app: 'v1.2',
+      app: 'v1.4',
       note: '이 파일에는 기기에 저장된 훈련 데이터가 들어 있습니다. 공개 저장소나 단체 대화방에 올리지 마십시오. API 키는 포함되어 있지 않습니다.',
       prefs: Object.assign({}, prefs),
       data
@@ -1756,6 +1785,540 @@ function changesSummary(changes){
 /* 송신 직전 공통 처리 — 음성·텍스트 두 경로 모두 여기를 지난다 */
 function prepareTransmission(raw){
   return interpretText(raw, interpretCtx());
+}
+
+/* ===============================================================
+   4.11 지휘역량 프로파일 (STEP4~5 신규)
+   · 실제 훈련 기록에서 관찰된 것만 평가한다. 추측하지 않는다.
+   · 직무별로 분리한다. 선착대장 훈련에서 통제단장 항목을 평가할 수는 없다.
+   · 이 기능이 실패해도 훈련 자체는 절대 멈추지 않는다 (전부 try/catch).
+   · 저장은 기존 settings 스토어를 쓴다. DB 버전을 올리지 않으므로
+     기존 훈련 기록이 손상될 위험이 없고 백업/복원에도 자동으로 포함된다.
+   =============================================================== */
+
+/* 판정 기준 — 코드에 흩어놓지 않고 여기서만 관리한다 */
+const WEAKNESS_CONFIG = {
+  observationMin: 1,        // 1회 누락 → 관찰
+  attentionMin:   2,        // 2회      → 주의
+  recurringMin:   3,        // 3회 이상 → 반복 경향
+  focusMin:       3,        // 최근 N회 중 3회 → 주요 취약영역
+  intensiveMin:   4,        // 최근 N회 중 4회 → 집중훈련 권장
+  recentWindow:   5,        // "최근"의 범위
+  criticalSafetyImmediate: true,   // 안전 관련은 1회라도 별도 경고
+  recencyWeights: [1.0, 0.9, 0.8, 0.7, 0.6],  // 최근 훈련에 더 큰 가중치
+  strengthRate:   0.8,      // 이 비율 이상 충족하면 강점 후보
+  strengthMinObs: 2,        // 강점으로 보려면 최소 관찰 횟수
+  delayThresholdSec: 60     // 이 시간을 넘겨 충족되면 "지연"으로 본다
+                            // ※ 공식 훈련기준이 아니라 이 앱의 관찰 기준값이다
+};
+
+/* 루브릭 요소 ↔ 지휘역량 영역 매핑.
+   rubric 이 있는 항목만 실제 훈련에서 관찰된다.
+   derived 는 채점 성분에서 파생한다. */
+const SKILLS = [
+  { key:'initial_report',      name:'초기 상황보고',     area:'C', rubric:'도착보고' },
+  { key:'situation_awareness', name:'초기 상황인식',     area:'A', rubric:'현장개요' },
+  { key:'fire_extent',         name:'연소 범위 판단',    area:'A', rubric:'연소범위' },
+  { key:'victim_info',         name:'요구조자 정보 확인', area:'K', rubric:'인명정보', safetyCritical:true },
+  { key:'resource_request',    name:'추가자원 요청',     area:'I', rubric:'지원요청' },
+  { key:'command_takeover',    name:'지휘권 인수',       area:'B', rubric:'지휘권인수' },
+  { key:'mission_assignment',  name:'출동대 임무부여',   area:'D', rubric:'임무부여' },
+  { key:'crew_safety',         name:'대원 안전관리',     area:'G', rubric:'안전관리', safetyCritical:true },
+  { key:'search_priority',     name:'인명검색 우선순위', area:'E', rubric:'검색우선', safetyCritical:true },
+  { key:'reassessment',        name:'상황변화 재평가',   area:'M', rubric:'재평가' },
+  { key:'icp_activation',      name:'통제단 가동',       area:'B', rubric:'통제단가동' },
+  { key:'agency_coordination', name:'유관기관 요청',     area:'J', rubric:'유관기관' },
+  { key:'resource_allocation', name:'자원 총괄 배분',    area:'I', rubric:'자원배분' },
+  { key:'external_report',     name:'대외 상황보고',     area:'L', rubric:'대외보고' },
+  { key:'sustained_ops',       name:'장기전 대비',       area:'R', rubric:'장기전' },
+  { key:'radio_discipline',    name:'무전 명확·간결',    area:'O·P·Q', derived:'radio' },
+  { key:'escalation_response', name:'상황 악화 대응',    area:'R', derived:'escalation' }
+];
+const SKILL_BY_KEY = SKILLS.reduce((o,s)=>{ o[s.key]=s; return o; }, {});
+const SKILL_BY_RUBRIC = SKILLS.reduce((o,s)=>{ if(s.rubric) o[s.rubric]=s; return o; }, {});
+
+/* 이 직무의 훈련에서 관찰될 수 있는 역량만 돌려준다 */
+function opportunityOf(roleKey){
+  const items = (ROLES[roleKey] ? ROLES[roleKey].items : []).map(i=>i.key);
+  return SKILLS.filter(s => s.rubric ? items.indexOf(s.rubric) >= 0 : true);
+}
+
+const PROFILE_VERSION = 2;   // 구조가 바뀌면 올린다. 옛 캐시는 자동 재계산된다.
+const CURRENT_COMMANDER = 'local';           // 지금은 1인 사용. 구조는 다인용으로 열어 둔다
+function commanderIdOf(sess){ return (sess && sess.commanderId) || CURRENT_COMMANDER; }
+
+/* ---------------------------------------------------------------
+   저장 계층 — 나중에 서버 DB로 바꿀 때 이 부분만 갈아끼운다
+   --------------------------------------------------------------- */
+const StorageAdapter = {
+  saveSession(sess){ try{ persistSession(sess); }catch(e){ logSafe('Storage','saveSession'); } },
+  loadSessions(){ return Promise.resolve(sessions.slice()); },
+  saveProfile(p){
+    if(!p || !p.commanderId) return Promise.resolve();
+    return Store.put('settings', {
+      key: 'commanderProfile:' + p.commanderId,
+      value: p, updatedAt: Date.now()
+    }).catch(()=>{});
+  },
+  async loadProfile(id){
+    try{
+      const row = await Store.get('settings', 'commanderProfile:' + (id || CURRENT_COMMANDER));
+      return (row && row.value) || null;
+    }catch(e){ return null; }
+  },
+  async clearProfile(id){
+    try{ await Store.remove('settings', 'commanderProfile:' + (id || CURRENT_COMMANDER)); }catch(e){}
+  },
+  async clearTrainingData(){
+    try{
+      await Store.clear('sessions');
+      await this.clearProfile(CURRENT_COMMANDER);
+      sessions = [];
+      commanderProfile = null;
+    }catch(e){ logSafe('Storage','clearTrainingData'); }
+  }
+};
+
+let commanderProfile = null;                 // 메모리 캐시
+
+/* ---------------------------------------------------------------
+   한 세션에서 관찰된 역량을 뽑아낸다 (AI 호출 없음, 기록에 근거)
+   --------------------------------------------------------------- */
+function extractObservations(sess){
+  const out = [];
+  try{
+    if(!sess || !sess.score) return out;
+    const role  = sess.role;
+    if(!ROLES[role]) return out;
+    const items    = ROLES[role].items.map(i=>i.key);
+    const checked  = new Set(sess.score.checked || []);
+    const times    = sess.skillTimes || {};
+    const myCount  = (sess.log || []).filter(l=>l.who==='me').length;
+
+    /* ① 루브릭 요소에서 나오는 역량 */
+    SKILLS.forEach(sk=>{
+      if(!sk.rubric) return;
+      if(items.indexOf(sk.rubric) < 0) return;          // 이 직무에서는 관찰 기회 없음 → 기록하지 않음
+      const satisfied = checked.has(sk.rubric);
+      const at = (typeof times[sk.rubric] === 'number') ? times[sk.rubric] : null;
+      const delayed = satisfied && at !== null && at > WEAKNESS_CONFIG.delayThresholdSec;
+
+      let severity = 'none', evidence;
+      if(!satisfied){
+        severity = sk.safetyCritical ? 'critical' : 'major';
+        evidence = `송신 ${myCount}회 동안 «${labelOf(sk.rubric)}» 항목이 확인되지 않음`;
+      }else if(delayed){
+        severity = 'minor';
+        evidence = `«${labelOf(sk.rubric)}» 최초 충족까지 ${at}초 소요`;
+      }else{
+        evidence = at !== null
+          ? `«${labelOf(sk.rubric)}» 현장 도착 후 ${at}초에 충족`
+          : `«${labelOf(sk.rubric)}» 충족 (시각 기록 없음)`;
+      }
+      out.push({
+        skill: sk.key, rubric: sk.rubric, area: sk.area,
+        opportunity: true, observed: true,
+        satisfied, delayed, firstAtSec: at,
+        severity, evidence
+      });
+    });
+
+    /* ② 무전 규칙 점수에서 파생 (만점 20) */
+    const radio = Number(sess.score.radio);
+    if(!isNaN(radio)){
+      const rate = Math.max(0, Math.min(1, radio / 20));
+      out.push({
+        skill:'radio_discipline', area:'O·P·Q', opportunity:true, observed:true,
+        satisfied: rate >= 0.7, delayed:false, firstAtSec:null, rate,
+        severity: rate >= 0.7 ? 'none' : (rate >= 0.5 ? 'minor' : 'major'),
+        evidence: `무전 규칙 준수 ${radio}/20점 (간결성·호출부호·복창 유도)`
+      });
+    }
+
+    /* ③ 상황 악화 대응 — 무응답 횟수와 추이 기록에서 */
+    const noResp = Number(sess.score.noResponse) || 0;
+    const worsen = (sess.log||[]).filter(l=>l.trend && l.trend.trend==='worsening').length;
+    const stabil = (sess.log||[]).filter(l=>l.trend && l.trend.trend==='stabilizing').length;
+    const trendKnown = (worsen + stabil) > 0;
+    if(trendKnown || noResp > 0){
+      const ok = noResp === 0 && (!trendKnown || stabil >= worsen);
+      out.push({
+        skill:'escalation_response', area:'R', opportunity:true, observed:true,
+        satisfied: ok, delayed:false, firstAtSec:null,
+        severity: noResp >= 2 ? 'major' : (ok ? 'none' : 'minor'),
+        evidence: noResp > 0
+          ? `지휘 응답 없음 ${noResp}회 발생`
+          : `상황 추이 — 안정 ${stabil}회 / 악화 ${worsen}회`
+      });
+    }
+  }catch(e){ logSafe('Profile','extract'); }
+  return out;
+}
+
+/* ---------------------------------------------------------------
+   약점 등급 판정 — 한 번의 실수로 약점이라 하지 않는다
+   --------------------------------------------------------------- */
+function classifyWeakness(stat, skill){
+  const C = WEAKNESS_CONFIG;
+  const miss = stat.missCount, recent = stat.recentMiss;
+  if(skill && skill.safetyCritical && C.criticalSafetyImmediate && miss >= 1 && recent >= 1){
+    return { level:'safety', rank:5, label:'안전 관련 확인 필요' };
+  }
+  if(recent >= C.intensiveMin) return { level:'intensive', rank:4, label:'집중훈련 권장' };
+  if(recent >= C.focusMin)     return { level:'focus',     rank:3, label:'주요 취약영역' };
+  if(miss  >= C.recurringMin)  return { level:'recurring', rank:2, label:'반복 경향' };
+  if(miss  >= C.attentionMin)  return { level:'attention', rank:1, label:'주의' };
+  if(miss  >= C.observationMin)return { level:'observation',rank:0, label:'관찰' };
+  return { level:'none', rank:-1, label:'' };
+}
+
+/* ---------------------------------------------------------------
+   직무별 프로파일 계산 — 최근 훈련에 더 큰 가중치
+   --------------------------------------------------------------- */
+function computeRoleProfile(roleSessions, roleKey){
+  const C = WEAKNESS_CONFIG;
+  const list = roleSessions.slice().sort((a,b)=>(b.startedAt||0)-(a.startedAt||0)); // 최근 먼저
+  const recent = list.slice(0, C.recentWindow);
+  const skills = {};
+
+  opportunityOf(roleKey).forEach(sk=>{
+    let wSum = 0, wHit = 0, obs = 0, hit = 0, miss = 0, recentMiss = 0;
+    let atSum = 0, atCount = 0, delayCount = 0;
+
+    list.forEach((s, idx)=>{
+      const o = (s.skillObservations || []).find(x=>x.skill === sk.key);
+      if(!o || !o.opportunity) return;
+      const w = C.recencyWeights[idx] !== undefined
+                ? C.recencyWeights[idx]
+                : C.recencyWeights[C.recencyWeights.length-1] * 0.8;
+      obs++; wSum += w;
+      if(o.satisfied){ hit++; wHit += w; } else { miss++; }
+      if(idx < C.recentWindow && !o.satisfied) recentMiss++;
+      if(typeof o.firstAtSec === 'number'){ atSum += o.firstAtSec; atCount++; }
+      if(o.delayed) delayCount++;
+    });
+    if(!obs) return;                                   // 한 번도 관찰되지 않았으면 만들지 않는다
+
+    const weightedRate = wSum ? (wHit / wSum) : 0;
+    /* 추세 — 최근 절반과 이전 절반을 비교 */
+    const half = Math.max(1, Math.floor(obs/2));
+    const rateOf = arr => {
+      let a=0,b=0;
+      arr.forEach(s=>{ const o=(s.skillObservations||[]).find(x=>x.skill===sk.key);
+        if(o&&o.opportunity){ b++; if(o.satisfied) a++; } });
+      return b ? a/b : null;
+    };
+    const rNew = rateOf(list.slice(0, half)), rOld = rateOf(list.slice(half));
+    let trend = 'stable';
+    if(rNew !== null && rOld !== null){
+      if(rNew - rOld >= 0.2) trend = 'improving';
+      else if(rOld - rNew >= 0.2) trend = 'declining';
+    }
+
+    const stat = { observedCount:obs, satisfiedCount:hit, missCount:miss,
+                   recentMiss, weightedRate, trend,
+                   avgFirstAtSec: atCount ? Math.round(atSum/atCount) : null,
+                   delayCount };
+    stat.weakness = classifyWeakness(stat, sk);
+    skills[sk.key] = stat;
+  });
+
+  /* 강점 / 약점 정리 */
+  const strengths = Object.keys(skills)
+    .filter(k => skills[k].observedCount >= C.strengthMinObs && skills[k].weightedRate >= C.strengthRate)
+    .sort((a,b)=> skills[b].weightedRate - skills[a].weightedRate)
+    .slice(0,4)
+    .map(k => ({ skill:k, name:SKILL_BY_KEY[k].name, rate:skills[k].weightedRate,
+                 evidence:`관찰 ${skills[k].observedCount}회 중 ${skills[k].satisfiedCount}회 충족` }));
+
+  const weaknesses = Object.keys(skills)
+    .filter(k => skills[k].weakness.rank >= 1)          // 주의 이상만
+    .sort((a,b)=> skills[b].weakness.rank - skills[a].weakness.rank
+                || skills[a].weightedRate - skills[b].weightedRate)
+    .slice(0,5)
+    .map(k => ({ skill:k, name:SKILL_BY_KEY[k].name,
+                 level:skills[k].weakness.level, label:skills[k].weakness.label,
+                 recentMiss:skills[k].recentMiss, missCount:skills[k].missCount,
+                 evidence:`최근 ${Math.min(list.length, C.recentWindow)}회 중 ${skills[k].recentMiss}회 누락` }));
+
+  const recurringPatterns = weaknesses
+    .filter(w => w.level === 'recurring' || w.level === 'focus' || w.level === 'intensive' || w.level === 'safety')
+    .map(w => `최근 ${Math.min(list.length, C.recentWindow)}회 중 ${w.recentMiss}회에서 «${w.name}» 누락`);
+
+  const currentFocus = weaknesses.length ? {
+    skill: weaknesses[0].skill,
+    name:  weaknesses[0].name,
+    reason: weaknesses[0].evidence,
+    priority: weaknesses[0].level === 'safety' || weaknesses[0].level === 'intensive' ? 'high'
+            : weaknesses[0].level === 'focus' ? 'medium' : 'low',
+    since: Date.now()
+  } : null;
+
+  const prior = list.slice(C.recentWindow);      // 최근 구간보다 이전 훈련들
+  return {
+    role: roleKey, sessions: list.length,
+    avgScore: list.length ? Math.round(list.reduce((a,s)=>a+((s.score&&s.score.total)||0),0)/list.length) : 0,
+    recentAvgScore: recent.length ? Math.round(recent.reduce((a,s)=>a+((s.score&&s.score.total)||0),0)/recent.length) : 0,
+    priorAvgScore: prior.length ? Math.round(prior.reduce((a,s)=>a+((s.score&&s.score.total)||0),0)/prior.length) : null,
+    lastScore: list.length ? ((list[0].score&&list[0].score.total)||0) : null,
+    skillProfile: skills,
+    strengths, weaknesses, recurringPatterns, currentFocus,
+    recentScenarioIds: list.slice(0,8).map(s=>s.scenarioId).filter(Boolean)
+  };
+}
+
+/* 전체 프로파일 (직무별로 나눠 담는다) */
+function computeProfile(allSessions, commanderId){
+  const id = commanderId || CURRENT_COMMANDER;
+  const mine = (allSessions||[]).filter(s => commanderIdOf(s) === id && s && s.score);
+  const byRole = {};
+  Object.keys(ROLES).forEach(rk=>{
+    const rs = mine.filter(s => s.role === rk);
+    if(rs.length) byRole[rk] = computeRoleProfile(rs, rk);
+  });
+  return {
+    commanderId: id,
+    version: PROFILE_VERSION,
+    createdAt: (commanderProfile && commanderProfile.createdAt) || Date.now(),
+    updatedAt: Date.now(),
+    totalSessions: mine.length,
+    byRole
+  };
+}
+
+/* ---------------------------------------------------------------
+   훈련이 끝난 뒤 프로파일에 누적 — 실패해도 훈련에 영향 없음
+   --------------------------------------------------------------- */
+async function updateProfileAfterSession(sess){
+  try{
+    if(!sess) return;
+    sess.commanderId = commanderIdOf(sess);
+    sess.skillObservations = extractObservations(sess);   // AI 채점 결과까지 반영된 시점에 다시 뽑는다
+    persistSession(sess);
+    commanderProfile = computeProfile(sessions, sess.commanderId);
+    await StorageAdapter.saveProfile(commanderProfile);
+    logSafe('Profile', 'updated ' + (sess.role||'') + ' n=' + commanderProfile.totalSessions);
+  }catch(e){
+    logSafe('Profile', safeErr(e));      // 조용히 넘기되 기록은 남긴다. 훈련은 계속된다.
+  }
+}
+
+/* ---------------------------------------------------------------
+   화면 표시용 도우미 (STEP7)
+   --------------------------------------------------------------- */
+function lastTrainedRole(){
+  for(let i = sessions.length - 1; i >= 0; i--){
+    const s = sessions[i];
+    if(s && s.role && ROLES[s.role]) return s.role;
+  }
+  return null;
+}
+function profileOfRole(roleKey){
+  if(!commanderProfile || !commanderProfile.byRole) return null;
+  return commanderProfile.byRole[roleKey] || null;
+}
+function numOrNull(v){ return (typeof v === 'number' && isFinite(v)) ? v : null; }
+function deltaHTML(now, before){
+  now = numOrNull(now); before = numOrNull(before);
+  if(before === null || now === null) return '';
+  const d = Math.round(now - before);
+  if(d === 0) return `<span class="delta same">±0</span>`;
+  return `<span class="delta ${d>0?'up':'down'}">${d>0?'▲':'▼'}${Math.abs(d)}</span>`;
+}
+function trendArrow(t){
+  if(t === 'improving') return `<span class="arrow up">↑</span>`;
+  if(t === 'declining') return `<span class="arrow down">↓</span>`;
+  return `<span class="arrow flat">－</span>`;
+}
+function skillBarRow(key, stat){
+  const sk = SKILL_BY_KEY[key]; if(!sk) return '';
+  const pct = Math.round((stat.weightedRate || 0) * 100);
+  const cls = pct >= 80 ? 'good' : (pct >= 50 ? 'mid' : 'low');
+  const lvl = stat.weakness && stat.weakness.rank >= 1
+    ? `<span class="lvl ${stat.weakness.level}">${esc(stat.weakness.label)}</span>` : '';
+  return `<div class="sk-row">
+    <div class="l">
+      <span class="nm">${esc(sk.name)}${trendArrow(stat.trend)}${lvl}</span>
+      <span class="vv">${stat.satisfiedCount}/${stat.observedCount}회${stat.avgFirstAtSec!==null?` · 평균 ${stat.avgFirstAtSec}초`:''}</span>
+    </div>
+    <div class="sk-bar"><i class="${cls}" style="width:${pct}%"></i></div>
+  </div>`;
+}
+
+/* 홈 화면 카드 — 지나치게 많이 보여주지 않는다 */
+function profileHomeCard(){
+  try{
+    const role = lastTrainedRole();
+    const rp = role ? profileOfRole(role) : null;
+    if(!rp || !rp.sessions) return '';
+
+    const focus = rp.currentFocus;
+    const str   = rp.strengths[0];
+    const base  = numOrNull(rp.priorAvgScore);
+
+    return `
+      <div class="sect">나의 지휘역량</div>
+      <div class="card">
+        <div class="muted xsmall" style="margin-bottom:8px">${ROLES[role].name} 기준 · 훈련 ${rp.sessions}회</div>
+        <div class="prof-top">
+          <span class="prof-score" style="color:${rp.recentAvgScore>=80?'var(--ok)':rp.recentAvgScore>=60?'var(--amber)':'var(--red)'}">${rp.recentAvgScore}</span>
+          <span class="muted small">최근 평균</span>
+          ${deltaHTML(rp.recentAvgScore, base)}
+          ${base !== null ? `<span class="muted xsmall">이전 ${base}점</span>` : ''}
+        </div>
+        <div class="hr"></div>
+        ${str ? `<div class="prof-row">
+          <div class="pk">강점</div>
+          <div class="pv"><b style="color:#7ee2a0">${esc(str.name)}</b>
+            <span class="why">${esc(str.evidence)}</span></div>
+        </div>` : ''}
+        ${focus ? `<div class="prof-row">
+          <div class="pk">집중 보완</div>
+          <div class="pv"><b style="color:#ffb877">${esc(focus.name)}</b>
+            <span class="why">${esc(focus.reason)}</span></div>
+        </div>` : `<div class="prof-row">
+          <div class="pk">집중 보완</div>
+          <div class="pv"><span class="muted">아직 반복되는 문제가 관찰되지 않았습니다.</span></div>
+        </div>`}
+        <div style="height:12px"></div>
+        <button class="btn ghost sm" id="goProfile" style="width:100%">상세 분석 보기</button>
+      </div>`;
+  }catch(e){ logSafe('Profile','homeCard'); return ''; }
+}
+
+/* 상세 화면 */
+function openProfile(role){
+  S.profileRole = role || S.profileRole || lastTrainedRole();
+  setTab('profile');
+}
+function renderProfileDetail(){
+  const el = $('#view-profile');
+  if(!el) return;
+  const roles = (commanderProfile && commanderProfile.byRole) ? Object.keys(commanderProfile.byRole) : [];
+  if(!roles.length){
+    el.innerHTML = `
+      <div class="mg-head"><button class="iconbtn" id="pfBack">‹</button><div class="ttl">나의 지휘역량</div></div>
+      <div class="empty">아직 분석할 훈련 기록이 없습니다.<br>훈련을 마치면 역량 분석이 시작됩니다.</div>`;
+    $('#pfBack').onclick = ()=> setTab('home');
+    return;
+  }
+  if(roles.indexOf(S.profileRole) < 0) S.profileRole = roles[0];
+  const rp = commanderProfile.byRole[S.profileRole];
+  const C  = WEAKNESS_CONFIG;
+
+  const skillKeys = Object.keys(rp.skillProfile)
+    .sort((a,b)=> rp.skillProfile[a].weightedRate - rp.skillProfile[b].weightedRate);
+
+  el.innerHTML = `
+    <div class="mg-head">
+      <button class="iconbtn" id="pfBack">‹</button>
+      <div class="ttl">나의 지휘역량</div>
+      <span class="badge">${commanderProfile.totalSessions}회</span>
+    </div>
+
+    ${roles.length > 1 ? `<div class="chips" style="margin-bottom:12px">
+      ${roles.map(r=>`<button class="chip grow ${S.profileRole===r?'on':''}" data-pfr="${r}">${ROLES[r].name}</button>`).join('')}
+    </div>` : ''}
+
+    <div class="card">
+      <div class="muted xsmall" style="margin-bottom:8px">${ROLES[S.profileRole].name} · 훈련 ${rp.sessions}회</div>
+      <div class="prof-top">
+        <span class="prof-score" style="color:${rp.recentAvgScore>=80?'var(--ok)':rp.recentAvgScore>=60?'var(--amber)':'var(--red)'}">${rp.recentAvgScore}</span>
+        <span class="muted small">최근 ${Math.min(rp.sessions, C.recentWindow)}회 평균</span>
+        ${deltaHTML(rp.recentAvgScore, rp.priorAvgScore)}
+      </div>
+      <div class="muted xsmall" style="margin-top:6px">
+        전체 평균 ${rp.avgScore}점${numOrNull(rp.priorAvgScore)!==null?` · 이전 구간 ${rp.priorAvgScore}점`:''}${numOrNull(rp.lastScore)!==null?` · 직전 훈련 ${rp.lastScore}점`:''}
+      </div>
+    </div>
+
+    ${rp.currentFocus ? `
+      <div class="sect">집중 보완 영역</div>
+      <div class="card">
+        <div style="font-size:16px;font-weight:700;color:#ffb877;margin-bottom:4px">${esc(rp.currentFocus.name)}</div>
+        <div class="small" style="line-height:1.6">${esc(rp.currentFocus.reason)}</div>
+        <div class="muted xsmall" style="margin-top:8px">우선도 ${rp.currentFocus.priority === 'high' ? '높음' : rp.currentFocus.priority === 'medium' ? '보통' : '낮음'}</div>
+      </div>` : ''}
+
+    ${rp.strengths.length ? `
+      <div class="sect">최근 강점</div>
+      <div class="card">
+        ${rp.strengths.map((s,i)=>`<div class="prof-row">
+          <div class="pk">${i+1}</div>
+          <div class="pv"><b style="color:#7ee2a0">${esc(s.name)}</b>
+            <span class="why">${esc(s.evidence)}</span></div>
+        </div>`).join('')}
+      </div>` : ''}
+
+    ${rp.weaknesses.length ? `
+      <div class="sect">보완이 필요한 영역</div>
+      <div class="card">
+        ${rp.weaknesses.map((w,i)=>`<div class="prof-row">
+          <div class="pk">${i+1}</div>
+          <div class="pv"><b>${esc(w.name)}</b><span class="lvl ${w.level}">${esc(w.label)}</span>
+            <span class="why">${esc(w.evidence)}</span></div>
+        </div>`).join('')}
+      </div>` : `
+      <div class="sect">보완이 필요한 영역</div>
+      <div class="card"><div class="muted small">반복해서 나타나는 문제가 아직 관찰되지 않았습니다.</div></div>`}
+
+    <div class="sect">역량별 현황</div>
+    <div class="card">
+      ${skillKeys.map(k => skillBarRow(k, rp.skillProfile[k])).join('')}
+      <div class="muted xsmall" style="margin-top:12px">
+        막대는 최근 훈련에 더 큰 가중치를 준 충족 비율입니다.
+        화살표는 최근 절반과 그 이전을 비교한 변화입니다.
+      </div>
+    </div>
+
+    ${rp.recurringPatterns.length ? `
+      <div class="sect">반복 관찰된 내용</div>
+      <div class="card">
+        ${rp.recurringPatterns.map(p=>`<div class="small" style="padding:6px 0;line-height:1.6">· ${esc(p)}</div>`).join('')}
+      </div>` : ''}
+
+    <div style="height:14px"></div>
+    <div class="notice">
+      이 분석은 <b>훈련 기록에서 실제로 관찰된 내용만</b> 사용합니다.
+      해당 직무로 훈련하지 않은 항목은 분석하지 않습니다.<br>
+      훈련 보조 자료이며, 인사평가나 역량 인증 자료가 아닙니다.
+    </div>
+    <div style="height:24px"></div>`;
+
+  $('#pfBack').onclick = ()=> setTab('home');
+  $$('#view-profile [data-pfr]').forEach(b => b.onclick = ()=>{
+    S.profileRole = b.dataset.pfr; buzz(8); renderProfileDetail(); window.scrollTo(0,0);
+  });
+}
+
+/* 부팅 시 프로파일 복구 (없으면 기록에서 다시 계산) */
+async function loadCommanderProfile(){
+  try{
+    commanderProfile = await StorageAdapter.loadProfile(CURRENT_COMMANDER);
+    if(commanderProfile && commanderProfile.version !== PROFILE_VERSION) commanderProfile = null;   // 옛 구조는 버리고 다시 만든다
+    if(!commanderProfile && sessions.length){
+      commanderProfile = computeProfile(sessions, CURRENT_COMMANDER);
+      await StorageAdapter.saveProfile(commanderProfile);
+    }
+  }catch(e){ commanderProfile = null; logSafe('Profile','load'); }
+  return commanderProfile;
+}
+
+/* 지난 기록에 관찰 데이터가 없으면 한 번 채워 넣는다 (기존 사용자 호환) */
+async function backfillObservations(){
+  try{
+    let changed = 0;
+    sessions.forEach(s=>{
+      if(s && s.score && !Array.isArray(s.skillObservations)){
+        s.commanderId = commanderIdOf(s);
+        s.skillObservations = extractObservations(s);
+        persistSession(s);
+        changed++;
+      }
+    });
+    if(changed) logSafe('Profile', 'backfill ' + changed);
+    return changed;
+  }catch(e){ logSafe('Profile','backfill'); return 0; }
 }
 
 async function loadSessionsFromStore(){
@@ -3065,8 +3628,12 @@ function labelOf(key){
 function renderHome(){
   const a = aggregate();
   const recent = sessions.slice(-3).reverse();
+  /* STEP7: 역량 카드. 프로파일이 없으면 기존 TOP3 카드를 그대로 쓴다 (회귀 방지) */
+  const profCard = profileHomeCard();
   $('#view-home').innerHTML = `
     <button class="btn big-start" id="goStart">훈련 시작<small>${ROLES[prefs.role].name} · ${DIFFS[prefs.diff].name}</small></button>
+
+    ${profCard}
 
     <div class="sect">누적 현황</div>
     <div class="stats">
@@ -3086,6 +3653,7 @@ function renderHome(){
       </button>`).join('')
       : `<div class="empty">아직 훈련 기록이 없습니다.<br>훈련을 시작해 보세요.</div>`}
 
+    ${profCard ? '' : `
     <div class="sect">내가 자주 놓치는 요소 TOP 3</div>
     <div class="card">
       ${a.top.length ? a.top.map(([k,c],i)=>`
@@ -3095,7 +3663,7 @@ function renderHome(){
           <span class="badge red">${c}회</span>
         </div>`).join('')
         : `<div class="muted small">훈련을 진행하면 누락한 필수 요소가 누적 집계됩니다.</div>`}
-    </div>
+    </div>`}
 
     <div class="hr"></div>
     <div class="notice">
@@ -3111,6 +3679,8 @@ function renderHome(){
   `;
   $('#goStart').onclick = ()=>{ buzz(15); S.trainStage='setup'; setTab('train'); };
   $$('#view-home [data-open]').forEach(b=> b.onclick = ()=>{ openSession(b.dataset.open); });
+  const gp = $('#goProfile');
+  if(gp) gp.onclick = ()=>{ buzz(10); openProfile(lastTrainedRole()); };
 }
 
 /* ---------------------------------------------------------------
@@ -4200,7 +4770,15 @@ function submitCommand(text, changes){
     const wait = Math.max(0, 500 - (Date.now() - t0));      // 너무 즉답이면 부자연스러우므로 최소 대기
     setTimeout(()=>{
       if(!S.run || S.run !== r) return;
-      (res.checked_items||[]).forEach(k=>r.checkedAll.add(k));
+      /* STEP5: 각 요소가 "몇 초에 처음 충족됐는지"를 남긴다.
+         나중에 지연 여부를 판단하는 근거가 된다. */
+      (res.checked_items||[]).forEach(k=>{
+        if(!r.checkedAll.has(k)){
+          r.skillTimes = r.skillTimes || {};
+          r.skillTimes[k] = Math.max(0, Math.round((Date.now() - r.startedAt) / 1000));
+        }
+        r.checkedAll.add(k);
+      });
       r.missedAll = new Set(ROLES[r.role].items.map(i=>i.key).filter(k=>!r.checkedAll.has(k)));
       if(res._ai) r.aiTurns = (r.aiTurns||0) + 1;
       /* STEP5: 지휘 결과에 따른 상황 추이를 기록해 다음 턴 인과에 이어 쓴다 */
@@ -4272,6 +4850,9 @@ function finishRun(){
     modelText: modelTransmission(r.role, r.scenario)
   };
   sess.aiTurns = r.aiTurns || 0;
+  /* STEP5: 역량 분석에 쓸 근거 — 요소별 최초 충족 시각과 사용자 식별자 */
+  sess.skillTimes  = r.skillTimes || {};
+  sess.commanderId = CURRENT_COMMANDER;
   /* AI 채점을 끄면 무전 로그가 외부로 나가지 않는다 (보안 감사 승인 사항) */
   sess.aiPending = AIRadio.enabled() && prefs.aiGrading && sess.log.some(l=>l.who==='me');
   sessions.push(sess);
@@ -4282,6 +4863,7 @@ function finishRun(){
   renderResult(sess);
   buzz([30,50,30]);
   if(sess.aiPending) enhanceSessionWithAI(sess);   // 3단계: AI 채점·총평 (비동기, 실패해도 로컬 결과 유지)
+  else updateProfileAfterSession(sess);            // STEP5: AI를 쓰지 않는 경우 여기서 바로 누적
 }
 
 /* AI 총평으로 결과를 덮어쓴다. 실패하면 로컬 채점 결과가 그대로 남는다. */
@@ -4319,6 +4901,7 @@ async function enhanceSessionWithAI(sess){
   }finally{
     sess.aiPending = false;
     persistSession(sess);        // 채점 결과까지 반영해 다시 저장
+    updateProfileAfterSession(sess);   // STEP5: AI 채점이 끝난 뒤에 누적해야 값이 맞는다
     if(S.tab==='train' && S.trainStage==='result' && S.viewingSession===sess.id) renderResult(sess);
     else if(S.tab==='log' && S.viewingSession===sess.id) renderSessionDetail(sess);
     else if(S.tab==='home') renderHome();
@@ -4763,7 +5346,7 @@ function renderSettings(){
       <div class="muted xsmall" style="margin-top:8px">초기화는 되돌릴 수 없습니다. 먼저 백업을 내보내는 것을 권합니다.</div>
     </div>
     <div style="height:20px"></div>
-    <div class="muted xsmall" style="text-align:center">지휘멘트 훈련 v1.2 · 무전 흐름 개선<br>접속 방식: ${esc(location.protocol)}${VoiceIO.secure?' (음성인식 가능)':' (음성인식 불가 — https 필요)'}</div>
+    <div class="muted xsmall" style="text-align:center">지휘멘트 훈련 v1.4 · 나의 지휘역량<br>접속 방식: ${esc(location.protocol)}${VoiceIO.secure?' (음성인식 가능)':' (음성인식 불가 — https 필요)'}</div>
     <div style="height:20px"></div>
   `;
 
@@ -4953,7 +5536,7 @@ function renderSettings(){
     $$('#storeCounts [data-wipe]').forEach(b=> b.onclick = async ()=>{
       if(!confirm(`${labels[b.dataset.wipe]} 항목을 모두 삭제합니다. 계속할까요?`)) return;
       await Store.clear(b.dataset.wipe);
-      if(b.dataset.wipe==='sessions'){ sessions=[]; S.viewingSession=null; }
+      if(b.dataset.wipe==='sessions'){ sessions=[]; S.viewingSession=null; await StorageAdapter.clearProfile(CURRENT_COMMANDER); commanderProfile=null; }
       if(b.dataset.wipe==='situationTypes' || b.dataset.wipe==='scenarios'){
         await loadUserData();
         if(!allTypes().some(t=>t.key===S.cfg.type)) S.cfg.type = TYPES[0].key;
@@ -4997,7 +5580,7 @@ function renderSettings(){
   $('#clearBtn').onclick = async ()=>{
     if(!confirm('모든 훈련 기록을 삭제합니다. 계속할까요?')) return;
     await Store.clear('sessions');
-    sessions=[]; S.viewingSession=null; buzz(40);
+    sessions=[]; S.viewingSession=null; await StorageAdapter.clearProfile(CURRENT_COMMANDER); commanderProfile=null; buzz(40);
     notify('훈련 기록을 삭제했습니다.', 'ok');
     renderSettings();
   };
@@ -5006,7 +5589,7 @@ function renderSettings(){
     const t = prompt('정말 초기화하려면 아래에 «초기화» 를 입력하십시오.');
     if(String(t||'').trim() !== '초기화'){ notify('초기화를 취소했습니다.'); return; }
     await Store.clearAll();
-    sessions=[]; S.viewingSession=null;
+    sessions=[]; S.viewingSession=null; commanderProfile=null;
     await loadUserData();
     await loadDocs();
     corrections = []; await loadCorrections();
@@ -5020,8 +5603,8 @@ function renderSettings(){
 /* ---------------------------------------------------------------
    13. 탭 전환 / PTT 바인딩
    --------------------------------------------------------------- */
-const TAB_TITLE = {home:'지휘멘트 훈련', train:'훈련', log:'훈련 기록', set:'설정', manage:'내 자료 관리'};
-const NAV_OF = {manage:'train'};          // 탭이 없는 화면은 어느 탭을 강조할지
+const TAB_TITLE = {home:'지휘멘트 훈련', train:'훈련', log:'훈련 기록', set:'설정', manage:'내 자료 관리', profile:'나의 지휘역량'};
+const NAV_OF = {manage:'train', profile:'home'};   // 탭이 없는 화면은 어느 탭을 강조할지
 function setTab(tab){
   S.tab = tab;
   const navKey = NAV_OF[tab] || tab;
@@ -5036,6 +5619,7 @@ function setTab(tab){
   if(tab==='log')    renderLogTab();
   if(tab==='set')    renderSettings();
   if(tab==='manage') renderManage();
+  if(tab==='profile') renderProfileDetail();
   if(tab==='train'){
     if(S.trainStage==='run' && S.run) renderTrainRun();
     else if(S.trainStage==='result'){
@@ -5095,6 +5679,10 @@ VoiceIO.refreshHint();
     await loadCorrections();
     await loadModelList();
     const n = await loadSessionsFromStore();
+    /* STEP5: 지난 기록에 관찰 데이터를 채우고 프로파일을 복구한다.
+       실패해도 훈련 기능에는 영향을 주지 않는다. */
+    await backfillObservations();
+    await loadCommanderProfile();
     if(n || u || dn){
       if(S.tab === 'home') renderHome();
       else if(S.tab === 'log') renderLogTab();

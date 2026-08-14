@@ -501,7 +501,7 @@ nav button.on{color:var(--red)}
   <div class="topbar">
     <h1 id="topTitle">지휘멘트 훈련</h1>
     <span class="spacer"></span>
-    <span class="badge" id="topBadge">v1.6</span>
+    <span class="badge" id="topBadge">v1.7</span>
   </div>
 
   <main>
@@ -1235,7 +1235,7 @@ const Backup = (function(){
       format: FORMAT,
       version: VERSION,
       exportedAt: new Date().toISOString(),
-      app: 'v1.6',
+      app: 'v1.7',
       note: '이 파일에는 기기에 저장된 훈련 데이터가 들어 있습니다. 공개 저장소나 단체 대화방에 올리지 마십시오. API 키는 포함되어 있지 않습니다.',
       prefs: Object.assign({}, prefs),
       data
@@ -1420,9 +1420,12 @@ function clearDraft(){
 let userDocs = [];              // 업로드 문서
 let abbrevMap = new Map();      // 약어 → [{full, note, docId}]  (기기 내 치환용, 외부 전송 없음)
 let blockedPrints = [];         // 전송 금지 자료의 지문 [{s, name}]
+let radioExamples = [];         // 전송을 허용한 무전 예시 (AI가 말투·절차를 따라 하도록)
 
 const DOC_KINDS = {
   abbrev: { name:'무전 약어집', emoji:'📻', hint:'약어,정식용어,설명 형식. 기기 안에서 약어를 정식 용어로 바꾸는 데 씁니다.' },
+  units:  { name:'출동대 명칭', emoji:'🚒', hint:'우리 서 출동대·차량 이름과 잘못 들리는 표기. 기기 안에서만 쓰이며 전송되지 않습니다.' },
+  radio:  { name:'무전 예시',   emoji:'📝', hint:'실제·모범 무전 주고받기. 전송을 허용하면 AI가 말투와 절차를 이 예시대로 따라 합니다.' },
   sop:    { name:'SOP 문서',    emoji:'📋', hint:'표준작전절차. 전송을 허용하면 AI가 피드백에 인용할 수 있습니다.' },
   ref:    { name:'참고 자료',   emoji:'📄', hint:'그 밖의 참고 문서.' }
 };
@@ -1495,6 +1498,90 @@ function parseAbbrev(text, ext){
   return entries;
 }
 
+/* ---- 출동대 명칭 사전 파싱 (D안) ----
+   JSON: {"units":[{"name":"진압1대","aliases":["진압 1대"],"role":"화재진압"}]}
+   또는  [{"name":...}]
+   CSV/TXT: 정식명칭,별칭1,별칭2,...  (한 줄에 한 부대) */
+function parseUnits(text, ext){
+  const out = [], seen = new Set();
+  const push = (name, aliases, role)=>{
+    name = String(name||'').trim();
+    if(!name || name.length > 20 || seen.has(name)) return;
+    seen.add(name);
+    out.push({
+      name,
+      role: String(role||'').trim().slice(0,20),
+      aliases: (aliases||[]).map(a=>String(a||'').trim()).filter(a=>a && a.length<=24)
+    });
+  };
+  if(ext === 'json'){
+    try{
+      const o = JSON.parse(text);
+      const arr = Array.isArray(o) ? o : (Array.isArray(o.units) ? o.units : []);
+      arr.forEach(u=>{
+        if(typeof u === 'string') push(u, []);
+        else if(u) push(u.name || u.정식명칭 || u.부대, u.aliases || u.별칭 || [], u.role || u.임무);
+      });
+      if(out.length) return out;
+    }catch(e){ /* JSON이 아니면 줄 단위로 */ }
+  }
+  String(text).split(/\r?\n/).forEach(raw=>{
+    const s = raw.trim();
+    if(!s || s[0]==='#' || s.slice(0,2)==='//') return;
+    if(/^(정식명칭|부대|이름|name)\s*[,\t]/i.test(s)) return;
+    const cols = s.indexOf('\t')>=0 ? s.split('\t').map(x=>x.trim()) : splitCsvLine(s);
+    if(!cols.length || !cols[0]) return;
+    push(cols[0], cols.slice(1));
+  });
+  return out;
+}
+
+/* ---- 무전 예시 파싱 (C안) ----
+   JSON: {"title":"","situation":"","exchanges":[{"from":"진압1대","text":"…"}]}
+        또는 그런 객체들의 배열
+   TXT : "부대명: 무전 내용" 한 줄씩, 빈 줄로 사례 구분 */
+function parseRadioExamples(text, ext){
+  const out = [];
+  const add = (o)=>{
+    if(!o) return;
+    const ex = (Array.isArray(o.exchanges) ? o.exchanges : [])
+      .map(x=>({ from:String((x&&(x.from||x.발신))||'').trim().slice(0,20),
+                 text:String((x&&(x.text||x.내용))||'').trim().slice(0,300) }))
+      .filter(x=>x.text);
+    if(!ex.length) return;
+    out.push({
+      title: String(o.title || o.제목 || '').trim().slice(0,60),
+      situation: String(o.situation || o.상황 || '').trim().slice(0,200),
+      exchanges: ex.slice(0, 14)
+    });
+  };
+  if(ext === 'json'){
+    try{
+      const o = JSON.parse(text);
+      if(Array.isArray(o)) o.forEach(add);
+      else if(o && Array.isArray(o.examples)) o.examples.forEach(add);
+      else add(o);
+      if(out.length) return out.slice(0, 12);
+    }catch(e){ /* 아래 줄 단위 파싱으로 */ }
+  }
+  /* 빈 줄로 사례를 나누고, "부대명: 내용" 형태를 읽는다 */
+  String(text).split(/\r?\n\s*\r?\n/).forEach(block=>{
+    const lines = block.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    if(!lines.length) return;
+    let title = '', situation = '';
+    const ex = [];
+    lines.forEach((l,i)=>{
+      if(l[0]==='#'){ title = l.replace(/^#+\s*/,''); return; }
+      const m = l.match(/^([^:：]{1,20})\s*[:：]\s*(.+)$/);
+      if(m) ex.push({ from:m[1].trim(), text:m[2].trim().slice(0,300) });
+      else if(i===0 && !title) title = l.slice(0,60);
+      else if(!situation) situation = l.slice(0,200);
+    });
+    if(ex.length) out.push({ title, situation, exchanges: ex.slice(0,14) });
+  });
+  return out.slice(0, 12);
+}
+
 /* ---- 전송 금지 자료 대조 ----
    요청 본문에서 30자 창을 15자 간격으로 훑어, 전송 금지 자료의 원문에 그 창이
    들어 있는지 확인한다. 자료 쪽에서 조각을 뽑으면 인용 위치가 어긋날 때 놓치므로
@@ -1528,6 +1615,18 @@ function rebuildDocDerived(){
       abbrevMap.set(e.abbr, cur);
     });
   });
+  /* 출동대 명칭 사전 — 전송 허용 여부와 무관하게 기기 안에서 늘 쓴다 */
+  try{
+    const us = [];
+    userDocs.filter(d => d.kind === 'units').forEach(d => (d.units || []).forEach(u => us.push(u)));
+    rebuildUnitDict(us);
+  }catch(e){ logSafe('Docs','units'); }
+
+  /* 무전 예시 — 전송을 허용한 것만 프롬프트에 쓴다 */
+  radioExamples = [];
+  userDocs.filter(d => d.kind === 'radio' && d.aiAllowed)
+          .forEach(d => (d.examples || []).forEach(x => radioExamples.push(x)));
+
   /* 전송 금지 자료의 정규화 원문 (대조용, 메모리에만 유지) */
   blockedPrints = userDocs
     .filter(d => !d.aiAllowed)
@@ -1565,6 +1664,12 @@ async function addDocument(file, kind){
   if(doc.kind === 'abbrev'){
     doc.entries = parseAbbrev(text, ext);
     doc.entryCount = doc.entries.length;
+  }else if(doc.kind === 'units'){
+    doc.units = parseUnits(text, ext);
+    doc.entryCount = doc.units.length;
+  }else if(doc.kind === 'radio'){
+    doc.examples = parseRadioExamples(text, ext);
+    doc.entryCount = doc.examples.length;
   }
   await Store.put('documents', doc);
   await loadDocs();
@@ -1583,7 +1688,13 @@ async function removeDocument(id){
   await Store.remove('documents', id);
   await loadDocs();
 }
-function allowedDocs(){ return userDocs.filter(d => d.aiAllowed); }
+/* units(출동대 명칭)는 조직 편성 정보라 원문을 내보내지 않는다.
+   AI에는 unitNameBlock() 이 이름만 따로 전달한다.
+   화면에도 "전송되지 않습니다"라고 표시하므로 그 약속을 코드로 못박는다. */
+const LOCAL_ONLY_KINDS = ['units'];
+function allowedDocs(){
+  return userDocs.filter(d => d.aiAllowed && LOCAL_ONLY_KINDS.indexOf(d.kind) < 0);
+}
 
 /* ---- 전송 직전 최종 필터 (외부로 나가는 모든 요청이 이 관문을 지난다) ---- */
 function assertNoBlockedContent(payloadText){
@@ -1600,6 +1711,35 @@ function assertNoBlockedContent(payloadText){
       }
     }
   }
+}
+
+/* ---- 무전 예시를 AI에게 보여준다 (C안) ----
+   설명보다 예시가 훨씬 잘 먹힌다. 지휘관이 올린 무전 그대로를 본보기로 준다. */
+function radioExampleBlock(maxChars){
+  if(!radioExamples.length) return '';
+  const cap = maxChars || 2200;
+  let used = 0;
+  const blocks = [];
+  for(const ex of radioExamples){
+    const lines = ex.exchanges.map(x => (x.from ? `${x.from}: ` : '') + x.text).join('\n');
+    const one = `### ${ex.title || '무전 예시'}${ex.situation ? `\n(상황) ${ex.situation}` : ''}\n${lines}`;
+    if(used + one.length > cap) break;
+    blocks.push(one); used += one.length;
+  }
+  if(!blocks.length) return '';
+  return '\n\n## 이 조직의 실제 무전 예시 — 말투와 절차를 이대로 따라 하라\n' +
+         '아래는 지휘관이 제공한 본보기다. 문장 길이, 호칭, 보고 순서, 끝맺음을 그대로 흉내 내라.\n' +
+         '내용을 베끼지는 말고, <형식과 어조만> 따라 한다.\n' +
+         blocks.join('\n\n');
+}
+
+/* ---- 우리 서 출동대 명칭을 AI에게 알려준다 (D안) ----
+   명칭 목록은 조직 편성 정보이므로 이름만 보내고 별칭·파일명은 보내지 않는다. */
+function unitNameBlock(){
+  if(!unitDict.length) return '';
+  const names = unitDict.map(u => u.name + (u.role ? `(${u.role})` : '')).slice(0, 30);
+  return '\n\n## 이 훈련에서 쓰는 출동대\n' + names.join(', ') +
+         '\n· 위 목록에 있는 이름만 쓴다. 목록에 없는 부대를 지어내지 마라.';
 }
 
 /* ---- 전송을 허용한 자료만 프롬프트에 넣는다 (파일명은 보내지 않는다) ---- */
@@ -1703,10 +1843,138 @@ function pickMeaning(list, ctx){
 }
 
 /* 해석 본체 — 원문을 받아 치환된 문장과 변경 내역을 돌려준다 */
+/* ===============================================================
+   4.10-b 출동대·차량 명칭 사전 (D안)
+   · 전부 기기 안에서만 쓴다. 외부로 보내지 않는다.
+   · 음성인식이 "진압 이대"로 들어도 "진압2대"로 되돌린다.
+   · 사용자가 units 자료를 올리면 여기에 합쳐진다.
+   =============================================================== */
+const NUM_KO = ['','일','이','삼','사','오','육','칠','팔','구','십'];
+
+/* 기본 제공 출동대 — 실제 편성에 맞게 자료로 덮어쓸 수 있다 */
+const BUILTIN_UNITS = [
+  { name:'진압1대', role:'화재진압' }, { name:'진압2대', role:'화재진압' },
+  { name:'진압3대', role:'화재진압' }, { name:'진압4대', role:'화재진압' },
+  { name:'진압5대', role:'화재진압' },
+  { name:'구조1대', role:'구조' },     { name:'구조2대', role:'구조' },
+  { name:'구조3대', role:'구조' },
+  { name:'구급1대', role:'구급' },     { name:'구급2대', role:'구급' },
+  { name:'구급3대', role:'구급' },
+  { name:'급수1대', role:'급수' },     { name:'급수2대', role:'급수' },
+  { name:'고가1대', role:'고소작업' }, { name:'굴절1대', role:'고소작업' },
+  { name:'배연1대', role:'배연' },     { name:'조명1대', role:'조명' },
+  { name:'화학1대', role:'화학' },
+  { name:'지휘1호', role:'지휘' },     { name:'지휘2호', role:'지휘' }
+];
+
+/* 이름에서 흔한 오인식 표기를 자동으로 만들어 낸다
+   진압2대 → "진압 2대", "진압이대", "진압 이 대" … */
+function unitAliasesOf(name){
+  const m = String(name||'').match(/^([가-힣]+)(\d+)(대|호|차)$/);
+  if(!m) return [];
+  const base = m[1], num = m[2], suf = m[3];
+  const ko = NUM_KO[parseInt(num,10)] || '';
+  const out = [`${base} ${num}${suf}`, `${base}${num} ${suf}`, `${base} ${num} ${suf}`];
+  if(ko){
+    out.push(`${base}${ko}${suf}`, `${base} ${ko}${suf}`, `${base}${ko} ${suf}`, `${base} ${ko} ${suf}`);
+  }
+  return out;
+}
+
+let unitDict = [];                 // [{name, role, aliases[]}]
+let unitAliasMap = new Map();      // 별칭(공백제거) → 정식 명칭
+let unitNameSet = new Set();       // 정식 명칭 모음 (점수 계산용)
+
+/* 소방 현장 용어 — 음성인식 후보를 고를 때 판단 근거로 쓴다 */
+const FIRE_TERMS = [
+  '관창','잔압','배연','급수','중계','방수','진입','인명검색','요구조자','퇴로','붕괴',
+  '공기호흡기','백드래프트','플래시오버','연소확대','지휘권','통제단','유관기관','대응단계',
+  '화점','제연','연결송수관','스프링클러','방화문','고가사다리','굴절차','담수','교대','보급',
+  '잔불','재발화','감전','유출','누출','매몰','협착','중증도','이송','대피','철수','전개',
+  '현장도착','상황보고','안전관리','우선순위','재평가','호흡기','사다리','굴절','살수'
+];
+
+function rebuildUnitDict(userUnits){
+  const merged = new Map();
+  BUILTIN_UNITS.forEach(u => merged.set(u.name, { name:u.name, role:u.role, aliases:[] }));
+  (userUnits || []).forEach(u => {
+    if(!u || !u.name) return;
+    const name = String(u.name).trim();
+    if(!name) return;
+    const prev = merged.get(name) || { name, role:'', aliases:[] };
+    prev.role = String(u.role || prev.role || '').trim();
+    prev.aliases = Array.from(new Set((prev.aliases || []).concat(
+      (Array.isArray(u.aliases) ? u.aliases : []).map(a => String(a||'').trim()).filter(Boolean))));
+    merged.set(name, prev);
+  });
+
+  unitDict = Array.from(merged.values());
+  unitAliasMap = new Map();
+  unitNameSet = new Set();
+  unitDict.forEach(u => {
+    unitNameSet.add(u.name);
+    const all = u.aliases.concat(unitAliasesOf(u.name));
+    all.forEach(a => {
+      const key = String(a).replace(/\s+/g,'');
+      if(key && key !== u.name) unitAliasMap.set(key, u.name);
+    });
+  });
+}
+rebuildUnitDict([]);               // 기본값으로 먼저 구성
+
+/* 문장 속 부대 표기를 정식 명칭으로 되돌린다 */
+function normalizeUnits(text){
+  let s = String(text || '');
+  const changes = [];
+  if(!s.trim()) return { text:s, changes };
+
+  /* ① "진압 2대" 처럼 사이에 공백이 낀 형태 */
+  s = s.replace(/([가-힣]{2})\s*(\d{1,2})\s*(대|호|차)/g, (m, base, num, suf)=>{
+    const cand = base + num + suf;
+    if(unitNameSet.has(cand)){
+      if(m !== cand) changes.push({ from:m.trim(), to:cand, kind:'unit' });
+      return cand;
+    }
+    return m;
+  });
+
+  /* ② "진압이대" 처럼 숫자를 한글로 말한 형태 + 사용자 등록 별칭 */
+  unitAliasMap.forEach((canon, alias)=>{
+    if(alias.length < 3) return;
+    const re = new RegExp(alias.split('').map(c=>c.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('\\s*'), 'g');
+    s = s.replace(re, (m)=>{
+      if(m.replace(/\s+/g,'') === canon) return canon;
+      changes.push({ from:m.trim(), to:canon, kind:'unit' });
+      return canon;
+    });
+  });
+
+  return { text:s, changes };
+}
+
+/* 음성인식 후보 중 어느 것이 소방 무전다운지 점수를 매긴다 */
+function domainScore(text){
+  const s = normalizeUnits(String(text||'')).text;
+  let score = 0;
+  unitNameSet.forEach(n => { if(s.indexOf(n) >= 0) score += 3; });      // 부대명이 가장 강한 신호
+  FIRE_TERMS.forEach(t => { if(s.indexOf(t) >= 0) score += 2; });
+  abbrevMap.forEach((list, ab)=>{ if(s.indexOf(ab) >= 0) score += 1; });
+  corrections.forEach(c => { if(c.to && s.indexOf(c.to) >= 0) score += 1; });
+  return score;
+}
+
 function interpretText(raw, ctx){
   let text = String(raw || '');
   const changes = [];
   if(!text.trim()) return { text, changes };
+
+  /* (0) 부대 명칭 정규화 — "진압 이대" → "진압2대"
+         뒤 단계(교정·약어)가 정식 명칭을 보게 하려면 먼저 해야 한다. */
+  try{
+    const u = normalizeUnits(text);
+    text = u.text;
+    u.changes.forEach(c => changes.push(c));
+  }catch(e){ logSafe('Interpret','unit'); }
 
   /* (1) 음성인식 오인식 교정 */
   corrections.forEach(c => {
@@ -2758,9 +3026,12 @@ ${lastDispatch || '(없음)'}
 ${trendHist ? `\n## 지금까지의 상황 추이 (인과를 이어서 전개하라)\n${trendHist}` : ''}
 ${(run && run.pendingIssue) ? `\n## 아직 해소되지 않은 위기 (${run.pendingIssueTurns||1}턴째 방치 중)\n${run.pendingIssue}\n이번 지휘멘트가 이 위기를 다루는지 먼저 판정하고, 다루지 않았으면 더 나빠진 모습으로 다시 제시하라.` : ''}
 
+${unitNameBlock()}
+${radioExampleBlock(2200)}
+
 ## 지휘관의 무전 (평가 대상)
 """${text}"""
-${allowedDocsBlock(1800)}
+${allowedDocsBlock(1500)}
 
 위 지휘관 무전에 대해 radio_reply, checked_items, missed_items, next_situation, situation_trend, trend_reason 을 JSON으로 출력하라.`;
     return await generate(SYS_TURN, user, SCHEMA_TURN);
@@ -3273,6 +3544,35 @@ const VoiceIO = (function(){
     return normStt(base + ' ' + incoming);
   }
 
+  /* 인식 후보 중 소방 무전에 가장 가까운 것을 고른다.
+     더 나은 후보가 없으면 엔진이 1순위로 준 것을 그대로 쓴다.
+     (= 사전이 비어 있거나 판단이 안 서면 예전과 완전히 같게 동작한다) */
+  api.stt.lastAlternatives = [];
+  function pickBestAlternative(result){
+    try{
+      if(!result || !result[0]) return '';
+      const first = String(result[0].transcript || '');
+      const n = Math.min(result.length || 1, 5);
+      const alts = [];
+      for(let i = 0; i < n; i++){
+        const a = result[i] && result[i].transcript;
+        if(a) alts.push(String(a));
+      }
+      api.stt.lastAlternatives = alts.map(a => ({ text:a, score: domainScore(a) }));   // 점검 화면용
+      if(alts.length <= 1) return first;
+
+      let best = first, bestScore = domainScore(first);
+      for(let i = 1; i < alts.length; i++){
+        const sc = domainScore(alts[i]);
+        if(sc > bestScore){ best = alts[i]; bestScore = sc; }   // 동점이면 엔진 순위를 존중한다
+      }
+      return best;
+    }catch(e){
+      logSafe('STT','altPick');
+      return (result && result[0] && result[0].transcript) || '';
+    }
+  }
+
   function build(){
     if(rec) return rec;
 
@@ -3291,7 +3591,14 @@ const VoiceIO = (function(){
        최종 문자열에 섞는 원인이 되므로 v1.2에서는 최종 결과만 받는다.
     */
     rec.interimResults = false;
-    rec.maxAlternatives = 1;
+    /*
+       후보를 여러 개 받아 소방 용어에 가장 가까운 것을 고른다.
+       범용 음성인식은 "관창"을 "광창"으로, "진압2대"를 "진압 이대"로
+       1순위에 올리는 일이 잦다. 2~5순위에 정답이 들어 있는 경우가 있다.
+       ※ 후보가 늘어도 결과 합치기(mergeTranscript) 방식은 그대로다.
+         고른 뒤 넘기는 문자열만 달라지므로 중복 문제와 무관하다.
+    */
+    rec.maxAlternatives = 5;
 
     rec.onstart = ()=>{
       running = true;
@@ -3311,7 +3618,7 @@ const VoiceIO = (function(){
         const result = e.results[i];
         if(!result || !result[0] || !result.isFinal) continue;
 
-        const t = normStt(result[0].transcript);
+        const t = normStt(pickBestAlternative(result));
         if(!t) continue;
 
         segmentText = mergeTranscript(segmentText, t);
@@ -3912,6 +4219,24 @@ function manageTermsBody(){
         바꾼 내용은 송신 전에 항상 화면에 표시되니, 이상하면 <b>눌러서 고친 뒤</b> 보내십시오.</div>`
       : `<div class="empty">등록된 약어가 없습니다.<br><b>자료</b> 탭에서 무전 약어집을 올려 주세요.</div>`}
 
+    <div class="sect">출동대 명칭 (${unitDict.length}개)</div>
+    <div class="card">
+      <div class="okbox" style="margin-bottom:10px">🔒 명칭 사전은 <b>기기 안에서만</b> 쓰입니다. 별칭과 파일은 전송되지 않습니다.</div>
+      <div class="muted xsmall" style="margin-bottom:8px">「진압 이대」처럼 들려도 「진압2대」로 되돌립니다.</div>
+      ${unitDict.slice(0,24).map(u=>`<span class="tag ok" style="margin:0 5px 5px 0">${esc(u.name)}</span>`).join('')}
+      ${unitDict.length>24?`<div class="muted xsmall" style="margin-top:6px">외 ${unitDict.length-24}개</div>`:''}
+      <div class="muted xsmall" style="margin-top:8px"><b>자료</b> 탭에서 «🚒 출동대 명칭» 파일을 올리면 우리 서 편성으로 바꿀 수 있습니다.</div>
+    </div>
+
+    <div class="sect">음성인식 점검</div>
+    <div class="card">
+      <div class="muted xsmall" style="margin-bottom:10px">
+        말한 내용이 어떻게 들렸는지, 어떻게 고쳐졌는지 그대로 보여줍니다.
+        인식이 안 맞을 때 <b>엔진이 잘못 들은 것인지, 교정 규칙이 없는 것인지</b> 구분할 수 있습니다.
+      </div>
+      <button class="btn ghost" id="sttCheck">🎙 음성인식 점검하기</button>
+    </div>
+
     <div class="sect">음성 오인식 교정 규칙</div>
     <div class="notice" style="margin-bottom:10px">
       음성인식이 소방 용어를 잘못 알아들을 때 쓰는 규칙입니다.
@@ -3942,7 +4267,93 @@ function ruleRow(c){
     <button class="x" data-ruledel="${esc(c.id)}">✕</button>
   </div>`;
 }
+/* ---- 음성인식 점검 (B안) ----
+   원문 후보 → 정규화·교정 결과를 나란히 보여준다.
+   훈련 흐름과 완전히 분리된 화면이라 훈련 상태를 건드리지 않는다. */
+function openSttCheck(){
+  let raw = '', alts = [], done = '', changes = [], listening = false;
+
+  const draw = ()=> openModal(`
+    <h3>🎙 음성인식 점검</h3>
+    ${!VoiceIO.stt.supported
+      ? `<div class="warnbox">${esc(VoiceIO.unsupportedReason() || '이 환경에서는 음성인식을 쓸 수 없습니다')}</div>`
+      : `<div class="muted small" style="margin-bottom:12px">아래 버튼을 <b>누른 채</b> 소방 용어를 말해 보십시오.<br>
+           예: «진압2대는 2층 관창 전개하고 잔압 확인하라»</div>
+         <button class="btn ${listening?'primary':'ghost'}" id="scMic" style="min-height:64px">
+           ${listening ? '🎙 듣는 중 — 손을 떼면 결과' : '🎙 누른 채 말하기'}
+         </button>`}
+
+    ${raw ? `
+      <div class="field" style="margin-top:14px;margin-bottom:10px">
+        <label>① 엔진이 들은 것 (원문)</label>
+        <div class="pre">${esc(raw)}</div>
+      </div>
+      ${alts.length > 1 ? `
+      <div class="field" style="margin-bottom:10px">
+        <label>② 다른 후보들 (점수 높은 것을 고릅니다)</label>
+        <div class="abbrev-tbl">
+          ${alts.map((a,i)=>`<div class="r">
+            <div class="a">${i===0?'1순위':(i+1)+'순위'}</div>
+            <div class="f">${esc(a.text)}<div class="n">소방 용어 점수 ${a.score}</div></div>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
+      <div class="field" style="margin-bottom:10px">
+        <label>③ 고친 뒤 (실제 전송되는 문장)</label>
+        <div class="pre" style="color:#a9ecc2">${esc(done)}</div>
+      </div>
+      ${changes.length ? `<div class="okbox">고친 내용 — ${esc(changes.map(c=>c.from+' → '+c.to).join(' · '))}</div>`
+                       : `<div class="notice">고칠 내용이 없었습니다. 위 ①이 이미 정확하면 정상입니다.<br>
+                            ①이 틀렸는데 ③도 그대로라면 <b>교정 규칙을 추가</b>하십시오.</div>`}
+    ` : ''}
+
+    <div class="mrow">
+      <button class="btn ghost" id="scClose">닫기</button>
+      ${raw ? `<button class="btn primary" id="scRule">교정 규칙 추가</button>` : ''}
+    </div>`,
+    bd => {
+      const mic = bd.querySelector('#scMic');
+      if(mic){
+        const start = e => {
+          e.preventDefault();
+          if(listening) return;
+          listening = true; draw();
+          VoiceIO.stt.onResult = onDone;
+          VoiceIO.stt.start();
+        };
+        const stop = ()=>{ if(!listening) return; listening = false; VoiceIO.stt.stop(); };
+        mic.addEventListener('pointerdown', start);
+        ['pointerup','pointercancel','pointerleave'].forEach(ev=> mic.addEventListener(ev, stop));
+      }
+      bd.querySelector('#scClose').onclick = ()=>{ VoiceIO.stt.abort(); restoreHandler(); closeModal(); };
+      const r = bd.querySelector('#scRule');
+      if(r) r.onclick = ()=>{
+        VoiceIO.stt.abort(); restoreHandler(); closeModal();
+        openManage('terms');
+        setTimeout(()=>{
+          const f = $('#ruleFrom'); if(f){ f.value = raw; f.focus(); }
+          const t = $('#ruleTo'); if(t) t.value = done;
+          notify('들린 말과 올바른 말을 확인한 뒤 «규칙 추가»를 누르십시오.', null, 6000);
+        }, 300);
+      };
+    });
+
+  const prevHandler = VoiceIO.stt.onResult;
+  const restoreHandler = ()=>{ VoiceIO.stt.onResult = prevHandler; };
+  const onDone = txt => {
+    listening = false;
+    raw = String(txt || '').trim();
+    alts = (VoiceIO.stt.lastAlternatives || []).slice();
+    const r = interpretText(raw, {});
+    done = r.text; changes = r.changes;
+    draw();
+  };
+  draw();
+}
+
 function bindTermsList(){
+  const sc = $('#sttCheck');
+  if(sc) sc.onclick = ()=>{ buzz(10); openSttCheck(); };
   const add = $('#ruleAdd');
   if(add) add.onclick = async ()=>{
     const from = ($('#ruleFrom').value || '').trim();
@@ -3998,17 +4409,26 @@ function manageDocsBody(){
               <span class="kindtag ${d.kind}">${k.name}</span>
               <span class="sendtag ${d.aiAllowed?'yes':'no'}">${d.aiAllowed?'AI 전송 허용':'🔒 전송 안 함'}</span>
             </div>
-            <div class="dm">${fmtBytes(d.size)} · ${fmtDate(d.addedAt)}${d.kind==='abbrev'?` · 약어 ${d.entryCount||0}개 인식`:''}</div>
+            <div class="dm">${fmtBytes(d.size)} · ${fmtDate(d.addedAt)}${
+              d.kind==='abbrev' ? ` · 약어 ${d.entryCount||0}개 인식`
+              : d.kind==='units' ? ` · 출동대 ${d.entryCount||0}개 인식`
+              : d.kind==='radio' ? ` · 무전 예시 ${d.entryCount||0}건 인식`
+              : ''}</div>
+            ${d.kind==='units' ? `<div class="muted xsmall" style="margin-top:4px">🔒 이 자료는 전송되지 않고 기기 안에서만 쓰입니다.</div>` : ''}
             ${d.kind==='abbrev' && (d.entries||[]).length ? `
               <div class="abbrev-tbl">
                 <div class="r head"><div class="a">약어</div><div class="f">정식 용어</div></div>
                 ${d.entries.slice(0,4).map(e=>`<div class="r"><div class="a">${esc(e.abbr)}</div><div class="f">${esc(e.full)}${e.note?`<div class="n">${esc(e.note)}</div>`:''}</div></div>`).join('')}
                 ${d.entries.length>4?`<div class="r"><div class="a"></div><div class="f n">외 ${d.entries.length-4}개 …</div></div>`:''}
               </div>` : ''}
+            ${LOCAL_ONLY_KINDS.indexOf(d.kind) >= 0 ? `
+            <div class="drow">
+              <span class="lbl" style="color:var(--ok)">🔒 기기 전용 — 전송할 수 없습니다</span>
+            </div>` : `
             <div class="drow">
               <span class="lbl">AI 전송 허용</span>
               <button class="toggle sm ${d.aiAllowed?'on':''}" data-docai="${esc(d.id)}"></button>
-            </div>
+            </div>`}
             <div class="drow" style="border-top:0;padding-top:0">
               <button class="btn sm ghost" data-docview="${esc(d.id)}" style="flex:1">내용 보기</button>
               <button class="btn sm danger" data-docdel="${esc(d.id)}" style="flex:1">삭제</button>
@@ -4065,7 +4485,10 @@ function closeModal(){
 
 /* ---------- 업로드 모달 (유형 선택 + 파싱 미리보기) ---------- */
 function openUploadModal(file){
-  let kind = /약어|abbr/i.test(file.name) ? 'abbrev' : (/sop|절차/i.test(file.name) ? 'sop' : 'ref');
+  let kind = /약어|abbr/i.test(file.name) ? 'abbrev'
+           : /출동대|부대|편성|unit/i.test(file.name) ? 'units'
+           : /무전|예시|radio|시나리오|대화/i.test(file.name) ? 'radio'
+           : /sop|절차/i.test(file.name) ? 'sop' : 'ref';
   const ext = String(file.name.split('.').pop()||'').toLowerCase();
 
   const render = async () => {
@@ -5555,7 +5978,7 @@ function renderSettings(){
       <div class="muted xsmall" style="margin-top:8px">초기화는 되돌릴 수 없습니다. 먼저 백업을 내보내는 것을 권합니다.</div>
     </div>
     <div style="height:20px"></div>
-    <div class="muted xsmall" style="text-align:center">지휘멘트 훈련 v1.6 · 상황종료 확인<br>접속 방식: ${esc(location.protocol)}${VoiceIO.secure?' (음성인식 가능)':' (음성인식 불가 — https 필요)'}</div>
+    <div class="muted xsmall" style="text-align:center">지휘멘트 훈련 v1.7 · 무전 자료 반영<br>접속 방식: ${esc(location.protocol)}${VoiceIO.secure?' (음성인식 가능)':' (음성인식 불가 — https 필요)'}</div>
     <div style="height:20px"></div>
   `;
 

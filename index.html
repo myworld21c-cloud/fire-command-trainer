@@ -464,7 +464,7 @@ nav button.on{color:var(--red)}
   <div class="topbar">
     <h1 id="topTitle">지휘멘트 훈련</h1>
     <span class="spacer"></span>
-    <span class="badge" id="topBadge">v1.0</span>
+    <span class="badge" id="topBadge">v1.1</span>
   </div>
 
   <main>
@@ -1196,7 +1196,7 @@ const Backup = (function(){
       format: FORMAT,
       version: VERSION,
       exportedAt: new Date().toISOString(),
-      app: 'v1.0',
+      app: 'v1.1',
       note: '이 파일에는 기기에 저장된 훈련 데이터가 들어 있습니다. 공개 저장소나 단체 대화방에 올리지 마십시오. API 키는 포함되어 있지 않습니다.',
       prefs: Object.assign({}, prefs),
       data
@@ -4686,7 +4686,7 @@ function renderSettings(){
       <div class="muted xsmall" style="margin-top:8px">초기화는 되돌릴 수 없습니다. 먼저 백업을 내보내는 것을 권합니다.</div>
     </div>
     <div style="height:20px"></div>
-    <div class="muted xsmall" style="text-align:center">지휘멘트 훈련 v1.0 · 무전 흐름 개선<br>접속 방식: ${esc(location.protocol)}${VoiceIO.secure?' (음성인식 가능)':' (음성인식 불가 — https 필요)'}</div>
+    <div class="muted xsmall" style="text-align:center">지휘멘트 훈련 v1.1 · 무전 흐름 개선<br>접속 방식: ${esc(location.protocol)}${VoiceIO.secure?' (음성인식 가능)':' (음성인식 불가 — https 필요)'}</div>
     <div style="height:20px"></div>
   `;
 

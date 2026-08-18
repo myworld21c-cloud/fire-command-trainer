@@ -407,6 +407,13 @@ nav button.on{color:var(--red)}
 .subs .s.amb b{color:var(--amber)}
 .subs .hd{color:#6f7884}
 .msg.me .subs{border-top-color:#333b45}
+/* v1.9: 이 송신이 누구를 부른 것으로 읽혔는지 — 화면에서 바로 확인할 수 있게 */
+.callto{
+  margin-top:6px;padding-top:6px;border-top:1px dashed #39414c;
+  font-size:11.5px;color:#8f98a3;line-height:1.6;
+}
+.callto b{color:#ffb877;font-weight:800}
+.msg.me .callto{border-top-color:#333b45}
 
 .rule-item{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .rule-item + .rule-item{margin-top:6px}
@@ -515,7 +522,7 @@ nav button.on{color:var(--red)}
   <div class="topbar">
     <h1 id="topTitle">지휘멘트 훈련</h1>
     <span class="spacer"></span>
-    <span class="badge" id="topBadge">v1.9</span>
+    <span class="badge" id="topBadge">v1.9.1</span>
   </div>
 
   <main>
@@ -1269,7 +1276,7 @@ const Backup = (function(){
       format: FORMAT,
       version: VERSION,
       exportedAt: new Date().toISOString(),
-      app: 'v1.9',
+      app: 'v1.9.1',
       note: '이 파일에는 기기에 저장된 훈련 데이터가 들어 있습니다. 공개 저장소나 단체 대화방에 올리지 마십시오. API 키는 포함되어 있지 않습니다.',
       prefs: Object.assign({}, prefs),
       data
@@ -3603,12 +3610,19 @@ ${unitNameBlock()}${radioExampleBlock(PROMPT_BUDGET.radio)}${allowedDocsBlock(PR
   function fixResponder(reply, addr){
     const s = String(reply || '');
     if(!addr || !addr.to || !s.trim()) return s;
-    const m = s.match(/^\s*([가-힣0-9]{2,12})(?=\s*(?:수신|여기|입니다|응답))/);
+    /* 맨 앞 낱말 덩어리를 집는다. "진압1대장입니다", "진압1대," 같은 형태를 모두 잡으려고
+       뒤에서부터 한 글자씩 줄여 가며 <아는 호출명>을 찾는다. */
+    const m = s.match(/^\s*([가-힣0-9]{2,16})/);
     if(!m) return s;
-    const said = m[1];
+    const head = m[1];
+    let said = '';
+    for(let n = head.length; n >= 2; n--){
+      const c = head.slice(0, n);
+      if(callsignCanon.has(c) || unitNameSet.has(c)){ said = c; break; }
+    }
+    if(!said) return s;                                 // 모르는 말이면 손대지 않는다
     if(said === addr.to) return s;
-    if(!callsignCanon.has(said) && !unitNameSet.has(said)) return s;   // 모르는 말이면 손대지 않는다
-    if(canonCallsign(said) === addr.to) return s;                      // 같은 부대의 다른 표기면 그대로
+    if(canonCallsign(said) === addr.to) return s;       // 같은 부대의 다른 표기면 그대로
     logSafe('AIRadio', 'RESPONDER_FIXED');
     return s.replace(said, addr.to);
   }
@@ -5939,6 +5953,8 @@ function renderLog(){
     const who = m.who==='dispatch' ? '상황실 / 현장' : m.who==='me' ? '나 (지휘)' : '';
     if(m.who==='sys') return `<div class="msg sys">${esc(m.text)}</div>`;
     return `<div class="msg ${m.who}"><span class="who">${who}</span>${trendBadge(m.trend)}${esc(m.text)}${
+      m.callTo ? `<div class="callto">📻 호출 대상 <b>${esc(m.callTo)}</b>${m.callFrom ? ` · 발신 ${esc(m.callFrom)}` : ''} — 이 상대가 응답합니다</div>` : ''
+    }${
       m.changes && m.changes.length ? `<div class="subs"><span class="hd">기기 인식</span>${changesSummary(m.changes)}</div>` : ''
     }</div>`;
   }).join('');
@@ -6002,9 +6018,19 @@ function submitCommand(text, changes){
   VoiceIO.tts.cancel();                                 // 상황실이 말하는 중이면 즉시 멈추고 내 송신을 받는다
   buzz(20);
   pushLog('me', text);
-  if(changes && changes.length){                        // 로그 항목에 치환 내역을 붙인다
+  {
+    /* 내 송신에 <누구를 부른 것으로 읽었는지>를 붙여 둔다.
+       지휘관이 화면에서 바로 확인할 수 있어야, 엉뚱한 부대가 답할 때
+       앱이 못 알아들은 것인지 AI가 흘린 것인지 구분할 수 있다. */
     const last = r.log[r.log.length-1];
-    if(last && last.who === 'me'){ last.changes = changes; renderLog(); }
+    if(last && last.who === 'me'){
+      if(changes && changes.length) last.changes = changes;
+      try{
+        const a = detectAddressee(text);
+        if(a && a.to){ last.callTo = a.to; last.callFrom = a.from || ''; }
+      }catch(e){ logSafe('Callsign','LOG'); }
+      renderLog();
+    }
   }
 
   r.state='judge';
@@ -6714,7 +6740,7 @@ function renderSettings(){
       <div class="muted xsmall" style="margin-top:8px">초기화는 되돌릴 수 없습니다. 먼저 백업을 내보내는 것을 권합니다.</div>
     </div>
     <div style="height:20px"></div>
-    <div class="muted xsmall" style="text-align:center">지휘멘트 훈련 v1.9 · 무전 호출명 정합<br>접속 방식: ${esc(location.protocol)}${VoiceIO.secure?' (음성인식 가능)':' (음성인식 불가 — https 필요)'}</div>
+    <div class="muted xsmall" style="text-align:center">지휘멘트 훈련 v1.9.1 · 무전 호출명 정합<br>접속 방식: ${esc(location.protocol)}${VoiceIO.secure?' (음성인식 가능)':' (음성인식 불가 — https 필요)'}</div>
     <div style="height:20px"></div>
   `;
 

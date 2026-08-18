@@ -515,7 +515,7 @@ nav button.on{color:var(--red)}
   <div class="topbar">
     <h1 id="topTitle">지휘멘트 훈련</h1>
     <span class="spacer"></span>
-    <span class="badge" id="topBadge">v1.8</span>
+    <span class="badge" id="topBadge">v1.9</span>
   </div>
 
   <main>
@@ -1269,7 +1269,7 @@ const Backup = (function(){
       format: FORMAT,
       version: VERSION,
       exportedAt: new Date().toISOString(),
-      app: 'v1.8',
+      app: 'v1.9',
       note: '이 파일에는 기기에 저장된 훈련 데이터가 들어 있습니다. 공개 저장소나 단체 대화방에 올리지 마십시오. API 키는 포함되어 있지 않습니다.',
       prefs: Object.assign({}, prefs),
       data
@@ -1786,9 +1786,22 @@ function radioExampleBlock(maxChars){
    명칭 목록은 조직 편성 정보이므로 이름만 보내고 별칭·파일명은 보내지 않는다. */
 function unitNameBlock(){
   if(!unitDict.length) return '';
-  const names = unitDict.map(u => u.name + (u.role ? `(${u.role})` : '')).slice(0, 30);
-  return '\n\n## 이 훈련에서 쓰는 출동대\n' + names.join(', ') +
-         '\n· 위 목록에 있는 이름만 쓴다. 목록에 없는 부대를 지어내지 마라.';
+  const names = unitDict.map(u => u.name + (u.role ? `(${u.role})` : '')).slice(0, 45);
+  return '\n\n## 이 훈련에서 쓰는 호출명\n' + names.join(', ') +
+         '\n· 위 목록에 있는 이름만 쓴다. 목록에 없는 부대를 지어내지 마라.' +
+         '\n· 편대의 대장을 부를 때는 "진압1대장", "구조1대장"처럼 장을 붙인다.';
+}
+
+/* ---- 이번 송신에서 지휘관이 부른 상대를 AI에게 못박아 준다 ----
+   프롬프트에 규칙만 적어 두면 모델이 곧잘 흘린다. 매 턴 <누가 답할 차례인지>를
+   따로 계산해 명시한다. 이것이 호출 상대가 뒤바뀌던 문제의 본체 해결이다. */
+function addresseeBlock(addr){
+  if(!addr || !addr.to) return '';
+  return `\n\n## 이번 무전에서 지휘관이 부른 상대 — <반드시 이 상대가 답한다>
+지휘관이 부른 이름: **${addr.to}**${addr.from ? `\n지휘관 자신의 호출명: ${addr.from} (이 이름으로 답하면 안 된다)` : ''}
+· radio_reply 는 반드시 "${addr.to} 수신." 으로 시작한다.
+· 다른 부대 이름으로 바꿔 답하지 마라. 부른 상대가 답하는 것이 무전의 기본이다.
+· 지시 내용이 다른 부대와 관련되더라도, 응답하는 주체는 ${addr.to} 다.`;
 }
 
 /* ---- 전송을 허용한 자료만 프롬프트에 넣는다 (파일명은 보내지 않는다) ---- */
@@ -1900,8 +1913,21 @@ function pickMeaning(list, ctx){
    =============================================================== */
 const NUM_KO = ['','일','이','삼','사','오','육','칠','팔','구','십'];
 
-/* 기본 제공 출동대 — 실제 편성에 맞게 자료로 덮어쓸 수 있다 */
+/* 기본 제공 출동대·호출명 — 실제 현장에서 쓰는 호칭이다.
+   편성이 다르면 units 자료를 올려 덮어쓸 수 있다. */
 const BUILTIN_UNITS = [
+  /* 지휘·참모 */
+  { name:'현장대응단장', role:'현장지휘관' },
+  { name:'진압대장', role:'진압 총괄' },
+  { name:'구조대장', role:'구조 총괄' },
+  { name:'구급대장', role:'구급 총괄' },
+  { name:'안전담당', role:'안전관리' },
+  { name:'조사담당', role:'화재조사' },
+  { name:'통신담당', role:'통신' },
+  { name:'감식담당', role:'화재감식' },
+  { name:'임시응급의료소장', role:'응급의료소' },
+  { name:'지휘차', role:'지휘' },
+  /* 진압·구조·구급 편대 */
   { name:'진압1대', role:'화재진압' }, { name:'진압2대', role:'화재진압' },
   { name:'진압3대', role:'화재진압' }, { name:'진압4대', role:'화재진압' },
   { name:'진압5대', role:'화재진압' },
@@ -1909,17 +1935,31 @@ const BUILTIN_UNITS = [
   { name:'구조3대', role:'구조' },
   { name:'구급1대', role:'구급' },     { name:'구급2대', role:'구급' },
   { name:'구급3대', role:'구급' },
-  { name:'급수1대', role:'급수' },     { name:'급수2대', role:'급수' },
-  { name:'고가1대', role:'고소작업' }, { name:'굴절1대', role:'고소작업' },
-  { name:'배연1대', role:'배연' },     { name:'조명1대', role:'조명' },
-  { name:'화학1대', role:'화학' },
-  { name:'지휘1호', role:'지휘' },     { name:'지휘2호', role:'지휘' }
+  /* 차량 */
+  { name:'제1선 펌프차', role:'방수' }, { name:'제2선 펌프차', role:'방수' },
+  { name:'제3선 펌프차', role:'방수' }, { name:'제4선 펌프차', role:'방수' },
+  { name:'탱크차', role:'급수' },
+  { name:'고가차', role:'고소작업' },   { name:'굴절차', role:'고소작업' },
+  { name:'화학차', role:'화학' },
+  { name:'조명차', role:'조명' },       { name:'조연차', role:'조연' },
+  { name:'배연차', role:'배연' },       { name:'발전차', role:'전원' },
+  { name:'무인파괴방수차', role:'무인방수' },
+  { name:'회복차', role:'대원 회복' },  { name:'위생차', role:'위생' }
 ];
 
 /* 이름에서 흔한 오인식 표기를 자동으로 만들어 낸다
-   진압2대 → "진압 2대", "진압이대", "진압 이 대" … */
+   진압2대 → "진압 2대", "진압이대", "진압 이 대" …
+   제2선 펌프차 → "제 2선 펌프차", "제이선 펌프차", "2선 펌프차" … */
 function unitAliasesOf(name){
-  const m = String(name||'').match(/^([가-힣]+)(\d+)(대|호|차)$/);
+  const s = String(name||'');
+  const line = s.match(/^제\s?(\d+)\s?선\s?펌프차$/);
+  if(line){
+    const num = line[1], ko = NUM_KO[parseInt(num,10)] || '';
+    const out = [`제${num}선펌프차`, `제 ${num}선 펌프차`, `제${num} 선 펌프차`, `${num}선 펌프차`, `${num}선펌프차`];
+    if(ko) out.push(`제${ko}선 펌프차`, `제${ko}선펌프차`, `제 ${ko}선 펌프차`, `${ko}선 펌프차`);
+    return out;
+  }
+  const m = s.match(/^([가-힣]+)(\d+)(대|호|차)$/);
   if(!m) return [];
   const base = m[1], num = m[2], suf = m[3];
   const ko = NUM_KO[parseInt(num,10)] || '';
@@ -1929,6 +1969,21 @@ function unitAliasesOf(name){
   }
   return out;
 }
+
+/* 무전에서만 쓰는 짧은 호출명 — <여기 ~> 뒤의 발신자 자리에서만 알아듣는다.
+   "다섯 명", "단장님" 처럼 일상어와 겹치므로 문장을 함부로 고치지 않는다.
+   그래서 normalizeUnits(치환)에는 넣지 않고, 호출 상대 판별에만 쓴다. */
+const CALLSIGN_ONLY = [
+  { form:'다섯',     canon:'현장대응단장' },
+  { form:'단장',     canon:'현장대응단장' },
+  { form:'대응단장', canon:'현장대응단장' },
+  { form:'현장지휘관', canon:'현장대응단장' },
+  { form:'물탱크차', canon:'탱크차' },
+  { form:'물탱크',   canon:'탱크차' },
+  { form:'무방차',   canon:'무인파괴방수차' },
+  { form:'지휘1호',  canon:'지휘차' },
+  { form:'상황실',   canon:'상황실' }
+];
 
 let unitDict = [];                 // [{name, role, aliases[]}]
 let unitAliasMap = new Map();      // 별칭(공백제거) → 정식 명칭
@@ -1968,7 +2023,104 @@ function rebuildUnitDict(userUnits){
       if(key && key !== u.name) unitAliasMap.set(key, u.name);
     });
   });
+  rebuildCallsigns();
 }
+
+/* ---------------------------------------------------------------
+   호출명 인식 — "구조1대장 여기 대응단장" 에서 <누구를 부른 것인지> 가려낸다.
+   현장 관행: 맨 앞이 <부르는 대상>, "여기" 뒤가 <말하는 사람>이다.
+   AI가 이걸 못 읽어서 누구를 불러도 진압1대로 수신하던 문제를 여기서 잡는다.
+   --------------------------------------------------------------- */
+let callsignRe = null;                 // 호출명 전체를 찾는 정규식
+let callsignCanon = new Map();         // 들린 표기 → 대표 명칭
+
+function rebuildCallsigns(){
+  const forms = [];
+  callsignCanon = new Map();
+  const add = (form, canon)=>{
+    const f = String(form || '').trim();
+    if(!f || callsignCanon.has(f)) return;
+    callsignCanon.set(f, canon || f);
+    forms.push(f);
+  };
+  unitDict.forEach(u => {
+    add(u.name, u.name);
+    (u.aliases || []).forEach(a => add(a, u.name));
+    unitAliasesOf(u.name).forEach(a => add(a, u.name));
+    /* "진압1대장" 처럼 대(隊)에 장(長)을 붙여 부르는 형태.
+       지휘관이 부른 그대로 응답하게 하려고 대표 명칭도 그 형태로 둔다.
+       오인식 표기에도 모두 장을 붙여 둔다 ("진압 이대장" → 진압2대장). */
+    if(/^[가-힣]+\d{1,2}대$/.test(u.name)){
+      const boss = u.name + '장';
+      add(boss, boss);
+      unitAliasesOf(u.name).forEach(a => add(a + '장', boss));
+      (u.aliases || []).forEach(a => add(a + '장', boss));
+    }
+  });
+  CALLSIGN_ONLY.forEach(x => add(x.form, x.canon));
+  /* 사전에 없는 번호까지 받아 준다 (진압9대장, 제7선 펌프차 …) */
+  const extra = ['(?:진압|구조|구급)\\s?\\d{1,2}\\s?대장?', '제\\s?\\d{1,2}\\s?선\\s?펌프차'];
+  forms.sort((a,b)=> b.length - a.length);           // 긴 것부터 — "진압1대장"이 "진압1대"보다 먼저
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  try{
+    callsignRe = new RegExp('(' + forms.map(esc).concat(extra).join('|') + ')', 'g');
+  }catch(e){ callsignRe = null; logSafe('Callsign','BUILD'); }
+}
+
+/* 대표 명칭으로 바꾼다 (모르는 형태는 들린 그대로 둔다) */
+function canonCallsign(t){
+  const s = String(t||'').trim();
+  if(callsignCanon.has(s)) return callsignCanon.get(s);
+  const tight = s.replace(/\s+/g,'');
+  if(callsignCanon.has(tight)) return callsignCanon.get(tight);
+  return s.replace(/\s+/g,'');
+}
+
+/* 문장에서 호출명이 나온 자리를 순서대로 찾는다 */
+function callsignHits(text){
+  const s = String(text || '');
+  if(!s.trim() || !callsignRe) return [];
+  callsignRe.lastIndex = 0;
+  const out = []; let m, guard = 0;
+  while((m = callsignRe.exec(s)) && guard++ < 200){
+    out.push({ i:m.index, raw:m[1], name:canonCallsign(m[1]) });
+    if(callsignRe.lastIndex === m.index) callsignRe.lastIndex++;   // 빈 매칭 방어
+  }
+  return out;
+}
+
+/* 이번 송신이 <누구를 부른 것인지> 판정한다.
+   { to:응답해야 할 상대, from:부른 사람, how:판정 근거 } · 못 찾으면 null */
+function detectAddressee(text){
+  const s = String(text || '');
+  const hits = callsignHits(s);
+  if(!hits.length) return null;
+
+  /* ① "○○ 여기 △△" — 가장 확실한 형태.
+        "여기" 바로 앞에 붙은 호출명이 부르는 대상이다.
+        ("여기 2층은" 처럼 일상어로 쓰인 여기와 섞이지 않게 간격을 좁게 본다) */
+  const re = /여기/g; let h;
+  while((h = re.exec(s))){
+    const at = h.index;
+    const before = hits.filter(x => x.i + x.raw.length <= at && at - (x.i + x.raw.length) <= 2);
+    if(!before.length) continue;
+    const after = hits.filter(x => x.i >= at + 2 && x.i - (at + 2) <= 3);
+    return {
+      to: before[before.length - 1].name,
+      toRaw: before[before.length - 1].raw.replace(/\s+/g,''),
+      from: after.length ? after[0].name : '',
+      how: '여기'
+    };
+  }
+  /* ② "여기"가 없으면 맨 처음 나온 호출명을 부른 대상으로 본다 */
+  /* "여기" 뒤쪽은 지휘관이 자기를 밝히는 자리다. 절대 응답자로 삼지 않는다.
+     ("전 대원 여기 대응단장" 처럼 앞을 못 알아들었을 때 대응단장이 답해 버리는 것을 막는다) */
+  const first = s.indexOf('여기');
+  const pool = first >= 0 ? hits.filter(x => x.i + x.raw.length <= first + 1) : hits;
+  if(!pool.length) return null;
+  return { to: pool[0].name, toRaw: pool[0].raw.replace(/\s+/g,''), from:'', how:'첫호출명' };
+}
+
 rebuildUnitDict([]);               // 기본값으로 먼저 구성
 
 /* 문장 속 부대 표기를 정식 명칭으로 되돌린다 */
@@ -1991,8 +2143,18 @@ function normalizeUnits(text){
   unitAliasMap.forEach((canon, alias)=>{
     if(alias.length < 3) return;
     const re = new RegExp(alias.split('').map(c=>c.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('\\s*'), 'g');
-    s = s.replace(re, (m)=>{
-      if(m.replace(/\s+/g,'') === canon) return canon;
+    const tight = canon.replace(/\s+/g,'');
+    s = s.replace(re, (m, off, whole)=>{
+      const mt = m.replace(/\s+/g,'');
+      if(mt === tight) return canon;
+      /* 별칭이 정식 명칭의 <뒷부분>일 때 (예: "1선 펌프차" ⊂ "제1선 펌프차")
+         앞머리가 이미 붙어 있으면 그대로 둔다. 안 그러면 "제제1선 펌프차"가 된다. */
+      const at = tight.indexOf(mt);
+      if(at > 0){
+        const need = tight.slice(0, at);
+        const before = String(whole).slice(0, off).replace(/\s+/g,'').slice(-need.length);
+        if(before === need) return m;
+      }
       changes.push({ from:m.trim(), to:canon, kind:'unit' });
       return canon;
     });
@@ -3261,14 +3423,29 @@ ${label}
   const SYS_TURN =
 `당신은 대한민국 소방 현장지휘 무전 훈련 시뮬레이터다. 두 가지 역할을 동시에 수행한다.
 
-[출동대 호칭 규칙 — 반드시 지킬 것]
-· 화재진압대 → 진압1대, 진압2대, 진압3대 …
-· 구조대     → 구조1대, 구조2대 …
-· 구급대     → 구급1대, 구급2대 …
-· 급수(물탱크) → 급수1대, 급수2대 …
-· 사다리·굴절 → 고가1대, 굴절1대     · 지휘차 → 지휘1호
-· <"○○대", "○○1호차", "1소대", "2소대", "○○소방서" 같은 표기를 절대 쓰지 마라.>
-· 지휘관이 부대를 지정하지 않고 지시하면, 상황에 맞는 부대를 골라 그 이름으로 복창한다.
+[무전 호출 규칙 — 이 항목을 가장 먼저 지켜라]
+현장 무전은 <부를 대상>을 먼저 말하고 <자기 자신>을 밝힌다.
+
+    "구조1대장 여기 대응단장, 3층 인명검색 실시하라. 이상."
+     └─ 부른 대상 ─┘  └─ 말한 사람 ─┘
+
+· <"여기" 앞에 있는 이름이 응답해야 할 상대다.> "여기" 뒤는 지휘관 자신이다.
+· 따라서 위 무전에는 <구조1대장이 답한다.> 대응단장이 답하는 것이 아니다.
+· "여기"가 없어도 <맨 앞에 부른 이름>이 응답한다.
+· 지휘관이 부른 이름을 <그대로> 써서 답한다.
+  구조1대장을 불렀으면 "구조1대장 수신."이라고 답한다.
+  진압1대장으로 바꿔 답하는 것은 <중대한 오류다.> 현장에서 혼선을 일으킨다.
+· 아무도 부르지 않았으면 상황에 맞는 부대를 골라 그 이름으로 답한다.
+
+[현장에서 쓰는 호출명 — 이 목록 밖의 이름을 지어내지 마라]
+· 지휘·참모 : 현장대응단장(약칭 "다섯"), 진압대장, 구조대장, 구급대장,
+              안전담당, 조사담당, 통신담당, 감식담당, 임시응급의료소장, 지휘차
+· 편대      : 진압1대·진압2대 … / 구조1대·구조2대 … / 구급1대·구급2대 …
+              (대장을 부를 때는 "진압1대장", "구조1대장" 처럼 장을 붙인다)
+· 차량      : 제1선 펌프차·제2선 펌프차 …, 탱크차(물탱크차), 고가차, 굴절차,
+              화학차, 조명차, 조연차, 배연차, 발전차, 무인파괴방수차(무방차),
+              회복차, 위생차
+· <"○○1호차", "1소대", "2소대", "○○소방서", "지휘1호" 같은 표기를 쓰지 마라.>
 
 [역할 1 — 상황실 / 현장대원]
 지휘관의 무전을 받은 상황실 또는 현장 대원으로서 응답한다.
@@ -3280,14 +3457,16 @@ ${label}
 "수신했습니다", "이행하겠습니다" 같은 <단편적인 대답은 금지한다.>
 지휘관이 <무엇을 누구에게> 시켰는지를 그대로 되짚어 말한다.
 
-· 형식: (응답 부대명) 수신. (지시받은 부대)는 (지시받은 임무) 실시하겠습니다. 이상.
+· 형식: (지휘관이 부른 바로 그 이름) 수신. (지시받은 임무) 실시하겠습니다. 이상.
 · 지시가 여러 건이면 <각각 나누어> 복창한다. 임의로 줄이지 마라.
 · 층수·수량·시간 같은 <구체적인 값을 반드시 되짚는다.>
 · 지휘관이 말하지 않은 내용을 복창에 끼워 넣지 마라.
 
   나쁜 예: "수신했습니다. 이행하겠습니다. 이상."
-  좋은 예: "진압1대 수신. 진압2대는 2층 인명검색, 진압3대는 후면 급수 중계 실시하겠습니다.
-            공기호흡기 잔압 100 이하 시 즉시 보고하겠습니다. 이상."
+  나쁜 예: (구조1대장을 불렀는데) "진압1대 수신. …"   ← 부른 상대가 아니다. 절대 금지.
+  좋은 예: (지휘관) "구조1대장 여기 대응단장, 3층 인명검색 실시하라. 이상."
+           (응답)   "구조1대장 수신. 3층 인명검색 실시하겠습니다.
+                     요구조자 확인되는 대로 즉시 보고하겠습니다. 이상."
 
 [역할 1의 절대 금지 — 훈련이 제자리를 돌지 않게 한다]
 · <빠진 필수 요소를 다시 말해 달라고 요구하지 마라.>
@@ -3417,8 +3596,32 @@ ${unitNameBlock()}${radioExampleBlock(PROMPT_BUDGET.radio)}${allowedDocsBlock(PR
 
   /* ---- 턴 판정 + 무전 응답 ----
      opts.onEarly(reply) — radio_reply 가 확보되는 즉시 한 번 불린다 (스트리밍일 때만) */
+  /* 응답자 이름 최종 확인 ——
+     프롬프트로 못박아도 모델이 다른 부대 이름으로 답하는 일이 남는다.
+     맨 앞이 <아는 호출명이면서 부른 상대와 다를 때만> 그 한 낱말을 바로잡는다.
+     문장 내용은 건드리지 않는다. */
+  function fixResponder(reply, addr){
+    const s = String(reply || '');
+    if(!addr || !addr.to || !s.trim()) return s;
+    const m = s.match(/^\s*([가-힣0-9]{2,12})(?=\s*(?:수신|여기|입니다|응답))/);
+    if(!m) return s;
+    const said = m[1];
+    if(said === addr.to) return s;
+    if(!callsignCanon.has(said) && !unitNameSet.has(said)) return s;   // 모르는 말이면 손대지 않는다
+    if(canonCallsign(said) === addr.to) return s;                      // 같은 부대의 다른 표기면 그대로
+    logSafe('AIRadio', 'RESPONDER_FIXED');
+    return s.replace(said, addr.to);
+  }
+
   api.turn = async function(text, roleKey, sc, turnIdx, run, opts){
     const o = opts || {};
+    /* 이번 송신에서 지휘관이 부른 상대 (없으면 null) */
+    let addr = null;
+    try{ addr = detectAddressee(text); }catch(e){ logSafe('Callsign','DETECT'); }
+    api.lastAddressee = addr;
+    const early = (typeof o.onEarly === 'function')
+      ? (t => o.onEarly(fixResponder(t, addr)))
+      : null;
     const lastDispatch = (run && run.log) ? (run.log.filter(l=>l.who==='dispatch').slice(-1)[0]||{}).text || '' : '';
     const trendHist = (run && run.trends || []).slice(-3)
       .map((t,i)=> `${i+1}) ${t.trend} — ${t.reason}`).join('\n');
@@ -3434,7 +3637,7 @@ ${trendHist ? `\n## 지금까지의 상황 추이 (인과를 이어서 전개하
 ${(run && run.pendingIssue) ? `\n## 아직 해소되지 않은 위기 (${run.pendingIssueTurns||1}턴째 방치 중)\n${run.pendingIssue}\n이번 지휘멘트가 이 위기를 다루는지 먼저 판정하고, 다루지 않았으면 더 나빠진 모습으로 다시 제시하라.` : ''}
 
 ## 지휘관의 무전 (평가 대상)
-"""${text}"""
+"""${text}"""${addresseeBlock(addr)}
 
 위 지휘관 무전에 대해 radio_reply, checked_items, missed_items, next_situation, situation_trend, trend_reason 을 JSON으로 출력하라.
 radio_reply 를 <가장 먼저> 완성해 내보내라. 지휘관이 그 무전을 먼저 듣는다.`;
@@ -3445,8 +3648,10 @@ radio_reply 를 <가장 먼저> 완성해 내보내라. 지휘관이 그 무전�
     /* 1차 스트리밍 → 2차 기존 방식 → (호출부에서) 3차 로컬 판정 */
     if(prefs.aiStream){
       try{
-        return await generateStream(SYS_TURN, user, SCHEMA_TURN,
-          { onEarly: o.onEarly, maxTokens: api.turnMaxTokens(), kind:'turn' });
+        const r = await generateStream(SYS_TURN, user, SCHEMA_TURN,
+          { onEarly: early, maxTokens: api.turnMaxTokens(), kind:'turn' });
+        r.radio_reply = fixResponder(r.radio_reply, addr);
+        return r;
       }catch(e){
         logSafe('AIRadio.stream', safeErr(e));
         /* 이미 지휘관이 답을 들었다면 다시 부르지 않는다.
@@ -3454,7 +3659,9 @@ radio_reply 를 <가장 먼저> 완성해 내보내라. 지휘관이 그 무전�
         if(e && e.earlySent) throw e;
       }
     }
-    return await generate(SYS_TURN, user, SCHEMA_TURN, false, { maxTokens: api.turnMaxTokens(), kind:'turn' });
+    const r2 = await generate(SYS_TURN, user, SCHEMA_TURN, false, { maxTokens: api.turnMaxTokens(), kind:'turn' });
+    r2.radio_reply = fixResponder(r2.radio_reply, addr);
+    return r2;
   };
 
   const SYS_EVAL =
@@ -6507,7 +6714,7 @@ function renderSettings(){
       <div class="muted xsmall" style="margin-top:8px">초기화는 되돌릴 수 없습니다. 먼저 백업을 내보내는 것을 권합니다.</div>
     </div>
     <div style="height:20px"></div>
-    <div class="muted xsmall" style="text-align:center">지휘멘트 훈련 v1.8 · 응답 체감속도 개선<br>접속 방식: ${esc(location.protocol)}${VoiceIO.secure?' (음성인식 가능)':' (음성인식 불가 — https 필요)'}</div>
+    <div class="muted xsmall" style="text-align:center">지휘멘트 훈련 v1.9 · 무전 호출명 정합<br>접속 방식: ${esc(location.protocol)}${VoiceIO.secure?' (음성인식 가능)':' (음성인식 불가 — https 필요)'}</div>
     <div style="height:20px"></div>
   `;
 

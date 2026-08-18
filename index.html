@@ -413,6 +413,16 @@ nav button.on{color:var(--red)}
   font-size:11.5px;color:#8f98a3;line-height:1.6;
 }
 .callto b{color:#ffb877;font-weight:800}
+.lt{display:inline-block;margin-right:6px;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:800;
+  background:rgba(143,152,163,.18);color:#a8b1bc;border:1px solid #4a525d;vertical-align:middle}
+/* AI 미연결 경고 — 훈련 화면 맨 위. 놓치면 훈련 품질이 통째로 달라진다 */
+.aioff{margin:0 0 12px;padding:12px 14px;border-radius:12px;font-size:13px;line-height:1.6;
+  background:rgba(245,132,43,.12);border:1px solid rgba(245,132,43,.45);color:#ffcfa3}
+.aioff b{color:#ffb877}
+.aioff span{display:block;margin-top:4px;font-size:12px;color:#c9a888}
+.aioff button{margin-top:9px;width:100%}
+.aioff.ok{background:rgba(63,191,106,.10);border-color:rgba(63,191,106,.38);color:#a9dfbc}
+.aioff.ok b{color:#7ee2a0}
 .msg.me .callto{border-top-color:#333b45}
 
 .rule-item{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
@@ -522,7 +532,7 @@ nav button.on{color:var(--red)}
   <div class="topbar">
     <h1 id="topTitle">지휘멘트 훈련</h1>
     <span class="spacer"></span>
-    <span class="badge" id="topBadge">v1.9.1</span>
+    <span class="badge" id="topBadge">v1.9.2</span>
   </div>
 
   <main>
@@ -1276,7 +1286,7 @@ const Backup = (function(){
       format: FORMAT,
       version: VERSION,
       exportedAt: new Date().toISOString(),
-      app: 'v1.9.1',
+      app: 'v1.9.2',
       note: '이 파일에는 기기에 저장된 훈련 데이터가 들어 있습니다. 공개 저장소나 단체 대화방에 올리지 마십시오. API 키는 포함되어 있지 않습니다.',
       prefs: Object.assign({}, prefs),
       data
@@ -1980,11 +1990,18 @@ function unitAliasesOf(name){
 /* 무전에서만 쓰는 짧은 호출명 — <여기 ~> 뒤의 발신자 자리에서만 알아듣는다.
    "다섯 명", "단장님" 처럼 일상어와 겹치므로 문장을 함부로 고치지 않는다.
    그래서 normalizeUnits(치환)에는 넣지 않고, 호출 상대 판별에만 쓴다. */
+/* 일상어와 겹치는 약칭 — "다섯 명", "단장님" 을 호출로 오인하면 안 된다.
+   "○○ 여기 다섯" 처럼 <여기 옆에> 있을 때만 호출명으로 인정한다. */
+const CALLSIGN_AMBIG = new Set(['다섯', '단장']);
+
 const CALLSIGN_ONLY = [
   { form:'다섯',     canon:'현장대응단장' },
   { form:'단장',     canon:'현장대응단장' },
   { form:'대응단장', canon:'현장대응단장' },
   { form:'현장지휘관', canon:'현장대응단장' },
+  { form:'현장 대응단장', canon:'현장대응단장' },
+  { form:'현장대응 단장', canon:'현장대응단장' },
+  { form:'대응 단장',   canon:'현장대응단장' },
   { form:'물탱크차', canon:'탱크차' },
   { form:'물탱크',   canon:'탱크차' },
   { form:'무방차',   canon:'무인파괴방수차' },
@@ -2111,7 +2128,8 @@ function detectAddressee(text){
     const at = h.index;
     const before = hits.filter(x => x.i + x.raw.length <= at && at - (x.i + x.raw.length) <= 2);
     if(!before.length) continue;
-    const after = hits.filter(x => x.i >= at + 2 && x.i - (at + 2) <= 3);
+    /* "여기 현장 대응단장인데" 처럼 띄어 말해도 발신자를 잡도록 조금 넓게 본다 */
+    const after = hits.filter(x => x.i >= at + 2 && x.i - (at + 2) <= 8);
     return {
       to: before[before.length - 1].name,
       toRaw: before[before.length - 1].raw.replace(/\s+/g,''),
@@ -2123,9 +2141,36 @@ function detectAddressee(text){
   /* "여기" 뒤쪽은 지휘관이 자기를 밝히는 자리다. 절대 응답자로 삼지 않는다.
      ("전 대원 여기 대응단장" 처럼 앞을 못 알아들었을 때 대응단장이 답해 버리는 것을 막는다) */
   const first = s.indexOf('여기');
-  const pool = first >= 0 ? hits.filter(x => x.i + x.raw.length <= first + 1) : hits;
+  const pool = (first >= 0 ? hits.filter(x => x.i + x.raw.length <= first + 1) : hits)
+    /* "다섯 명이 진입했습니다" 를 호출로 읽지 않도록, 일상어와 겹치는 약칭은
+       "여기" 를 낀 확실한 형태(①)에서만 쓴다. */
+    .filter(x => !CALLSIGN_AMBIG.has(x.raw.replace(/\s+/g,'')));
   if(!pool.length) return null;
   return { to: pool[0].name, toRaw: pool[0].raw.replace(/\s+/g,''), from:'', how:'첫호출명' };
+}
+
+/* 응답자 이름 최종 확인 ——
+   AI든 로컬 판정이든, 지휘관이 부른 상대가 답해야 한다.
+   맨 앞이 <아는 호출명이면서 부른 상대와 다를 때만> 그 한 낱말을 바로잡는다.
+   문장 내용은 건드리지 않는다. */
+function applyResponder(reply, addr){
+  const s = String(reply || '');
+  if(!addr || !addr.to || !s.trim()) return s;
+  /* "진압1대장입니다", "진압1대," 같은 형태를 모두 잡으려고
+     맨 앞 낱말 덩어리를 뒤에서부터 줄여 가며 아는 호출명을 찾는다. */
+  const m = s.match(/^\s*([가-힣0-9]{2,16})/);
+  if(!m) return s;
+  const head = m[1];
+  let said = '';
+  for(let n = head.length; n >= 2; n--){
+    const c = head.slice(0, n);
+    if(callsignCanon.has(c) || unitNameSet.has(c)){ said = c; break; }
+  }
+  if(!said) return s;                                 // 모르는 말이면 손대지 않는다
+  if(said === addr.to) return s;
+  if(canonCallsign(said) === addr.to) return s;       // 같은 부대의 다른 표기면 그대로
+  logSafe('Callsign', 'RESPONDER_FIXED');
+  return s.replace(said, addr.to);
 }
 
 rebuildUnitDict([]);               // 기본값으로 먼저 구성
@@ -2879,7 +2924,9 @@ function judgeLocal(text, roleKey, sc, turnIdx){
     /* 지시 문장이면 부대와 임무를 그대로 되짚는다 (단편적 대답 금지).
        보고 문장("…연소 중, 요구조자 미확인")을 지시로 오인하지 않도록
        명령형 표현이 있을 때만 임무 복창을 만든다. */
-    const ORDER_RE = /(하라|하십시오|해라|하도록|실시|투입|전개|배치|담당|맡|시행|바람|바랍니다|지시한다|보고하라|확인하라)/;
+    /* "…할 수 있도록", "…해 주기 바란다" 처럼 실제로 자주 쓰는 완곡한 지시형도 명령으로 본다.
+       이걸 놓치면 지시를 보고로 오인해 "접수했습니다"만 되풀이한다. */
+    const ORDER_RE = /(하라|하십시오|해라|하도록|있도록|실시|투입|전개|배치|담당|맡|시행|바람|바랍니다|지시한다|보고하라|확인하라)/;
     const UNIT_RE  = /(진압\s*\d+\s*대|구조\s*\d+\s*대|구급\s*\d+\s*대|급수\s*\d+\s*대|고가\s*\d+\s*대|굴절\s*\d+\s*대|지휘\s*\d+\s*호)/g;
     /* '요구조자'의 '구조'가 임무로 잡히지 않게 앞뒤를 살핀다 */
     const TASK_RE  = /(인명검색|배연|급수\s*중계|급수|방수|관창\s*전개|관창|사다리\s*전개|장비\s*전개|진입|(?<!요)구조(?!자)|이송|응급처치|철수|퇴로\s*확보|잔압\s*확인|대피\s*유도|교대|보급|검색)/g;
@@ -3607,25 +3654,7 @@ ${unitNameBlock()}${radioExampleBlock(PROMPT_BUDGET.radio)}${allowedDocsBlock(PR
      프롬프트로 못박아도 모델이 다른 부대 이름으로 답하는 일이 남는다.
      맨 앞이 <아는 호출명이면서 부른 상대와 다를 때만> 그 한 낱말을 바로잡는다.
      문장 내용은 건드리지 않는다. */
-  function fixResponder(reply, addr){
-    const s = String(reply || '');
-    if(!addr || !addr.to || !s.trim()) return s;
-    /* 맨 앞 낱말 덩어리를 집는다. "진압1대장입니다", "진압1대," 같은 형태를 모두 잡으려고
-       뒤에서부터 한 글자씩 줄여 가며 <아는 호출명>을 찾는다. */
-    const m = s.match(/^\s*([가-힣0-9]{2,16})/);
-    if(!m) return s;
-    const head = m[1];
-    let said = '';
-    for(let n = head.length; n >= 2; n--){
-      const c = head.slice(0, n);
-      if(callsignCanon.has(c) || unitNameSet.has(c)){ said = c; break; }
-    }
-    if(!said) return s;                                 // 모르는 말이면 손대지 않는다
-    if(said === addr.to) return s;
-    if(canonCallsign(said) === addr.to) return s;       // 같은 부대의 다른 표기면 그대로
-    logSafe('AIRadio', 'RESPONDER_FIXED');
-    return s.replace(said, addr.to);
-  }
+  const fixResponder = applyResponder;
 
   api.turn = async function(text, roleKey, sc, turnIdx, run, opts){
     const o = opts || {};
@@ -3903,6 +3932,13 @@ async function judgeTurn(text, roleKey, sc, turnIdx, run, opts){
   }
   /* 오프라인·실패 시 로컬 판정 — 추이는 충족 요소 수로 대신 가늠한다 */
   const local = judgeLocal(text, roleKey, sc, turnIdx);
+  /* 로컬 판정은 시나리오의 고정 호출부호(진압1대)로 답하도록 만들어져 있다.
+     지휘관이 다른 부대를 불렀다면 그 상대가 답해야 한다. 이름만 바로잡는다.
+     — judgeLocal 자체는 손대지 않는다. */
+  try{
+    const a = detectAddressee(text);
+    if(a) local.radio_reply = applyResponder(local.radio_reply, a);
+  }catch(e){ logSafe('Callsign','LOCAL'); }
   local.next_situation = '';
   const n = local.checked_items.length, total = ROLES[roleKey].items.length;
   local.situation_trend = n >= total - 1 ? 'stabilizing' : (n >= 2 ? 'holding' : 'worsening');
@@ -5921,6 +5957,21 @@ function runBar(caption, seconds, urgent, done){
 }
 function stopBar(){ if(S.run){ clearInterval(S.run.timers.bar); S.run.bar=null; renderWait(); } }
 
+/* AI가 응답하지 않는 상태를 훈련 중에 놓치지 않게 한다.
+   키는 탭을 닫으면 지워지므로, 모르는 채로 로컬 임시 응답만 받으며
+   훈련하는 일이 실제로 생긴다. 그때 무전 품질이 통째로 달라진다. */
+function aiOffBanner(){
+  if(prefs.aiOffline){
+    return `<div class="aioff ok">🔒 <b>오프라인 훈련 모드</b> — 외부 전송 0건. 미리 준비된 시나리오와 로컬 임시 응답으로 진행합니다.</div>`;
+  }
+  if(!AIRadio.getKey()){
+    return `<div class="aioff">⚠️ <b>AI 미연결 — 로컬 임시 응답으로 훈련 중</b>
+      <span>API 키는 앱을 닫으면 지워집니다. 지금은 정해진 문장으로만 응답하므로 복명복창과 상황 전개가 단조롭습니다.</span>
+      <button class="btn sm ghost" id="bnGoKey">설정에서 키 입력</button></div>`;
+  }
+  return '';
+}
+
 function renderTrainRun(){
   const r = S.run, sc = r.scenario;
   $('#view-train').innerHTML = `
@@ -5937,14 +5988,22 @@ function renderTrainRun(){
       <div class="clock" id="clock">00:00</div>
       <button class="btn danger sm" id="endRun">종료</button>
     </div>
+    ${aiOffBanner()}
     <div id="endZone"></div>
     <div id="waitZone"></div>
     <div id="log"></div>
     <div style="height:calc(min(25vh,150px) + 90px)"></div>
   `;
   $('#endRun').onclick = ()=>{ if(confirm('훈련을 종료하고 결과를 확인하시겠습니까?')) finishRun(); };
+  const gk = $('#bnGoKey'); if(gk) gk.onclick = ()=>{ buzz(10); setTab('set'); };
   $('#pttDock').classList.add('on');
   renderLog(); renderWait(); renderEndAsk();
+}
+
+/* 이 무전이 AI 응답인지 로컬 임시 응답인지 한눈에 보이게 한다.
+   두 응답의 품질 차이가 크기 때문에, 구분이 안 되면 원인을 못 찾는다. */
+function localTag(m){
+  return (m.who === 'dispatch' && m.local) ? '<span class="lt">로컬</span>' : '';
 }
 
 function renderLog(){
@@ -5952,7 +6011,7 @@ function renderLog(){
   box.innerHTML = S.run.log.map(m=>{
     const who = m.who==='dispatch' ? '상황실 / 현장' : m.who==='me' ? '나 (지휘)' : '';
     if(m.who==='sys') return `<div class="msg sys">${esc(m.text)}</div>`;
-    return `<div class="msg ${m.who}"><span class="who">${who}</span>${trendBadge(m.trend)}${esc(m.text)}${
+    return `<div class="msg ${m.who}"><span class="who">${who}</span>${localTag(m)}${trendBadge(m.trend)}${esc(m.text)}${
       m.callTo ? `<div class="callto">📻 호출 대상 <b>${esc(m.callTo)}</b>${m.callFrom ? ` · 발신 ${esc(m.callFrom)}` : ''} — 이 상대가 응답합니다</div>` : ''
     }${
       m.changes && m.changes.length ? `<div class="subs"><span class="hd">기기 인식</span>${changesSummary(m.changes)}</div>` : ''
@@ -6094,6 +6153,11 @@ function submitCommand(text, changes){
       }
       th.remove();
       if(!earlyReply) pushLog('dispatch', res.radio_reply);   // 복명복창 (먼저 내보냈으면 다시 띄우지 않는다)
+      /* AI 응답인지 로컬 임시 응답인지 기록에 남긴다 (화면에도 표시된다) */
+      {
+        const lastD = r.log.slice().reverse().find(l => l.who === 'dispatch');
+        if(lastD && res._ai === false){ lastD.local = true; renderLog(); }
+      }
       /* 새 후속 상황은 줄 맨 뒤에 붙인다. 앞서 밀린 상황이 있으면 그것이 먼저 나간다. */
       if(res.next_situation) enqueueSituation(res.next_situation, tr);
       else r.pendingTrend = tr;
@@ -6369,7 +6433,9 @@ function renderSessionDetail(s){
       ${s.log.map(m=>{
         if(m.who==='sys') return `<div class="msg sys">${esc(m.text)}</div>`;
         const who = m.who==='dispatch' ? '상황실 / 현장' : '나 (지휘)';
-        return `<div class="msg ${m.who}"><span class="who">${who}</span>${esc(m.text)}${
+        return `<div class="msg ${m.who}"><span class="who">${who}</span>${localTag(m)}${esc(m.text)}${
+          m.callTo ? `<div class="callto">📻 호출 대상 <b>${esc(m.callTo)}</b>${m.callFrom ? ` · 발신 ${esc(m.callFrom)}` : ''}</div>` : ''
+        }${
           m.changes && m.changes.length ? `<div class="subs"><span class="hd">기기 인식</span>${changesSummary(m.changes)}</div>` : ''
         }</div>`;
       }).join('')}
@@ -6740,7 +6806,7 @@ function renderSettings(){
       <div class="muted xsmall" style="margin-top:8px">초기화는 되돌릴 수 없습니다. 먼저 백업을 내보내는 것을 권합니다.</div>
     </div>
     <div style="height:20px"></div>
-    <div class="muted xsmall" style="text-align:center">지휘멘트 훈련 v1.9.1 · 무전 호출명 정합<br>접속 방식: ${esc(location.protocol)}${VoiceIO.secure?' (음성인식 가능)':' (음성인식 불가 — https 필요)'}</div>
+    <div class="muted xsmall" style="text-align:center">지휘멘트 훈련 v1.9.2 · 무전 호출명 정합<br>접속 방식: ${esc(location.protocol)}${VoiceIO.secure?' (음성인식 가능)':' (음성인식 불가 — https 필요)'}</div>
     <div style="height:20px"></div>
   `;
 
